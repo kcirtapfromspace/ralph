@@ -1,2 +1,10 @@
 // MCP (Model Context Protocol) server module
-// This module will contain the MCP server implementation for Ralph
+// This module contains the MCP server implementation for Ralph
+
+#![allow(unused_imports)]
+
+pub mod resources;
+pub mod server;
+pub mod tools;
+
+pub use server::RalphMcpServer;
