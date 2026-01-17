@@ -20,8 +20,8 @@
         "Typecheck passes"
       ],
       "priority": 1,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented on ralph/terminal-ux-enhancement-v2 branch (PRD specifies ralph/terminal-ux-enhancement but that branch had issues). Note: PRD mentions src/lib.rs but Ralph uses main.rs as the root - ui module exported from main.rs."
     },
     {
       "id": "US-002",
@@ -38,8 +38,8 @@
         "Typecheck passes"
       ],
       "priority": 2,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented StoryView with render_current_story() and render_next_story() methods. Uses rounded corners (╭╮╰╯) for panels, ○/● for criteria markers, and status-appropriate coloring."
     },
     {
       "id": "US-003",
@@ -56,8 +56,8 @@
         "Typecheck passes"
       ],
       "priority": 3,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented spinner.rs with RalphSpinner, IterationProgress, and ProgressManager. Uses braille characters for spinners, block characters (█▓░) for progress bars. Added start_spinner(), stop_spinner(), stop_spinner_with_success(), stop_spinner_with_error() methods to RalphDisplay, plus iteration progress management."
     },
     {
       "id": "US-004",
@@ -74,8 +74,8 @@
         "Typecheck passes"
       ],
       "priority": 4,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented QualityGateRenderer with render_gate(), render_gates(), render_summary_bar(), and render_from_results() methods. GateStatus uses icons: ✓ passed, ✗ failed, ◉ running, ○ pending, ⊘ skipped. QualityGateView can be created from GateResult for integration. 18 tests added."
     },
     {
       "id": "US-005",
@@ -92,8 +92,8 @@
         "Typecheck passes"
       ],
       "priority": 5,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented InterruptHandler with ctrlc crate for signal handling, render_interrupt_panel() with warning-styled box, story retry info display, cleanup progress messages, and state save indication. Added 14 tests. Integrated into RalphDisplay with install_interrupt_handler(), is_interrupted(), cancel_flag(), display_interrupt(), and display_cleanup_step() methods."
     },
     {
       "id": "US-006",
@@ -110,8 +110,8 @@
         "Typecheck passes"
       ],
       "priority": 6,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented TerminalCapabilities for feature detection (Ghostty, iTerm, WezTerm, Alacritty, kitty, vscode), hyperlink(), file_hyperlink(), file_hyperlink_with_line() for OSC 8 links, TitleStatus enum with indicators, build_title()/set_title()/update_title() for title management, begin_sync()/end_sync()/with_sync()/SyncGuard for synchronized output. GhosttyFeatures provides unified API with auto-detection and graceful fallbacks. 17 tests added."
     },
     {
       "id": "US-007",
@@ -128,8 +128,8 @@
         "Typecheck passes"
       ],
       "priority": 7,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented SummaryRenderer with render_completion_banner(), render_story_table(), render_gate_statistics(), render_execution_metrics(), and render_progress_tip() methods. ExecutionSummary holds story results, iterations, duration, commits, and GateStatistics. StoryResult tracks individual story outcomes. Human-readable duration formatting (Xh Xm Xs). 21 tests added."
     },
     {
       "id": "US-008",
@@ -145,8 +145,8 @@
         "Typecheck passes"
       ],
       "priority": 8,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Added RalphDisplay (wrapped in Arc<RwLock>) to RalphMcpServer. Implemented update_from_state() with StateTransition enum for detecting Idle->Running, Running->Running (iteration), Running->Completed, Running->Failed, Any->Idle transitions. Added display(), display_mut(), update_display(), update_display_with_story() methods. RalphDisplay now handles: spinners/progress bars on state change, story panel display, quality gate rendering, completion summary, terminal title updates via GhosttyFeatures."
     },
     {
       "id": "US-009",
@@ -162,8 +162,8 @@
         "Typecheck passes"
       ],
       "priority": 9,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented UiMode enum (Auto/Enabled/Disabled) and DisplayOptions struct with builder pattern. Added --ui, --no-color, and --quiet/-q flags to Cli struct. DisplayOptions respects NO_COLOR env var via should_enable_colors(). RalphDisplay.with_options() and RalphMcpServer.with_display()/with_prd_and_display() constructors added. All 403 tests pass."
     },
     {
       "id": "US-010",
@@ -178,8 +178,8 @@
         "Typecheck passes"
       ],
       "priority": 10,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented HelpRenderer with render_help() and render_version() methods. ASCII art banner with box drawing characters (╭╮╰╯). BuildInfo provides version, target arch/os via cfg attributes. Custom --help/-h and --version/-V flags replace clap defaults for styled output. Theme colors: success (green) for commands, in_progress (blue) for options, warning (yellow) for headers, muted (gray) for secondary text, story_id (cyan) for banner. 21 tests added."
     },
     {
       "id": "US-011",
@@ -197,8 +197,8 @@
         "Typecheck passes"
       ],
       "priority": 11,
-      "passes": false,
-      "notes": ""
+      "passes": true,
+      "notes": "Implemented StoryExecutor in src/mcp/tools/executor.rs with execute_story() async method. Features: detect_agent() for Claude/Amp CLI auto-detection, run_agent() spawns async process with prompt, iteration loop with cancellation support via watch channel, QualityGateChecker integration, update_prd_passes() updates JSON preserving structure, append_progress() adds timestamped entries, create_commit() with 'feat: [ID] - [Title]' format. Server integration: run_story() spawns background task, on_iteration callback updates ExecutionState iteration count, state transitions to Completed/Failed based on result. Added chrono dependency for timestamps. 432 tests pass."
     }
   ]
 }
