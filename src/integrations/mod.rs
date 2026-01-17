@@ -5,8 +5,10 @@
 
 #![allow(unused_imports)]
 
+pub mod registry;
 pub mod traits;
 
+pub use registry::ProviderRegistry;
 pub use traits::{
     CreateItemRequest, FailureIssueRequest, ItemInfo, ItemStatus, ProjectTracker, TrackerError,
     TrackerResult, UpdateItemRequest,
