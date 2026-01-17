@@ -4,9 +4,9 @@
 
 pub mod profiles;
 
-// Re-exports for convenience - will be used in future stories (US-008+)
+// Re-exports for convenience - will be used in future stories (US-009+)
 #[allow(unused_imports)]
 pub use profiles::{
     BlogConfig, CiConfig, DocumentationConfig, Profile, ProfileLevel, QualityConfig,
-    SecurityConfig, TestingConfig,
+    QualityConfigError, SecurityConfig, TestingConfig,
 };

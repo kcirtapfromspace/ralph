@@ -3,11 +3,14 @@
 //! This module defines the data structures for quality profiles that can be
 //! loaded from TOML configuration files.
 
-// Allow dead_code for now - these structs will be used in future stories (US-008+)
+// Allow dead_code for now - these types will be used in future stories (US-009+)
 #![allow(dead_code)]
 
+use config::{Config, ConfigError, Environment, File};
 use serde::Deserialize;
 use std::collections::HashMap;
+use std::path::Path;
+use thiserror::Error;
 
 /// The level of a quality profile.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
@@ -117,6 +120,22 @@ pub struct Profile {
     pub blog: BlogConfig,
 }
 
+/// Errors that can occur when loading quality configuration.
+#[derive(Debug, Error)]
+pub enum QualityConfigError {
+    /// The configuration file was not found.
+    #[error("configuration file not found: {0}")]
+    FileNotFound(String),
+
+    /// The configuration file could not be parsed.
+    #[error("failed to parse configuration: {0}")]
+    ParseError(#[from] ConfigError),
+
+    /// The configuration file path is invalid.
+    #[error("invalid configuration path: {0}")]
+    InvalidPath(String),
+}
+
 /// Root configuration structure containing all quality profiles.
 #[derive(Debug, Clone, Default, Deserialize)]
 pub struct QualityConfig {
@@ -126,6 +145,63 @@ pub struct QualityConfig {
 }
 
 impl QualityConfig {
+    /// Load quality configuration from a file path.
+    ///
+    /// This function loads the configuration from the specified TOML file and
+    /// supports environment variable overrides with the `RALPH_` prefix.
+    ///
+    /// # Environment Variable Overrides
+    ///
+    /// Environment variables can override configuration values using the format:
+    /// `RALPH_<SECTION>_<KEY>` (e.g., `RALPH_PROFILES_MINIMAL_TESTING_COVERAGE_THRESHOLD=50`)
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The configuration file does not exist
+    /// - The configuration file cannot be parsed
+    /// - The path is invalid
+    ///
+    /// # Examples
+    ///
+    /// ```no_run
+    /// use ralph::quality::QualityConfig;
+    ///
+    /// let config = QualityConfig::load("quality/ralph-quality.toml")?;
+    /// # Ok::<(), ralph::quality::profiles::QualityConfigError>(())
+    /// ```
+    pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, QualityConfigError> {
+        let path = path.as_ref();
+
+        // Verify the path is valid
+        let path_str = path
+            .to_str()
+            .ok_or_else(|| QualityConfigError::InvalidPath(format!("{:?}", path)))?;
+
+        // Check if the file exists
+        if !path.exists() {
+            return Err(QualityConfigError::FileNotFound(path_str.to_string()));
+        }
+
+        // Build configuration with file and environment variable sources
+        let config = Config::builder()
+            // Load from the specified file
+            .add_source(File::with_name(path_str))
+            // Add environment variable overrides with RALPH_ prefix
+            // Use double underscore as separator for nested keys
+            .add_source(
+                Environment::with_prefix("RALPH")
+                    .separator("__")
+                    .try_parsing(true),
+            )
+            .build()?;
+
+        // Deserialize into QualityConfig
+        let quality_config: QualityConfig = config.try_deserialize()?;
+
+        Ok(quality_config)
+    }
+
     /// Get a profile by its level.
     pub fn get_profile(&self, level: ProfileLevel) -> Option<&Profile> {
         let name = match level {
@@ -185,5 +261,49 @@ mod tests {
         assert!(!profile.documentation.required);
         assert!(profile.testing.unit_tests);
         assert_eq!(profile.testing.coverage_threshold, 0);
+    }
+
+    #[test]
+    fn test_load_file_not_found() {
+        let result = QualityConfig::load("nonexistent/path/config.toml");
+        assert!(result.is_err());
+        let err = result.unwrap_err();
+        assert!(matches!(err, QualityConfigError::FileNotFound(_)));
+    }
+
+    #[test]
+    fn test_load_from_actual_config() {
+        // Test loading the actual quality config file
+        let result = QualityConfig::load("quality/ralph-quality.toml");
+        assert!(result.is_ok(), "Failed to load config: {:?}", result);
+
+        let config = result.unwrap();
+
+        // Verify we have all three profiles
+        assert!(config.get_profile(ProfileLevel::Minimal).is_some());
+        assert!(config.get_profile(ProfileLevel::Standard).is_some());
+        assert!(config.get_profile(ProfileLevel::Comprehensive).is_some());
+
+        // Verify minimal profile has 0 coverage threshold
+        let minimal = config.get_profile(ProfileLevel::Minimal).unwrap();
+        assert_eq!(minimal.testing.coverage_threshold, 0);
+
+        // Verify standard profile has 70 coverage threshold
+        let standard = config.get_profile(ProfileLevel::Standard).unwrap();
+        assert_eq!(standard.testing.coverage_threshold, 70);
+
+        // Verify comprehensive profile has 90 coverage threshold and blog enabled
+        let comprehensive = config.get_profile(ProfileLevel::Comprehensive).unwrap();
+        assert_eq!(comprehensive.testing.coverage_threshold, 90);
+        assert!(comprehensive.blog.generate);
+    }
+
+    #[test]
+    fn test_error_display() {
+        let err = QualityConfigError::FileNotFound("test.toml".to_string());
+        assert_eq!(err.to_string(), "configuration file not found: test.toml");
+
+        let err = QualityConfigError::InvalidPath("invalid/path".to_string());
+        assert_eq!(err.to_string(), "invalid configuration path: invalid/path");
     }
 }
