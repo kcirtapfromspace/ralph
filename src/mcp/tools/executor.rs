@@ -148,7 +148,7 @@ impl StoryExecutor {
 
         let mut iterations_used = 0;
         let mut last_error: Option<String> = None;
-        let mut files_changed: Vec<String> = Vec::new();
+        let mut files_changed: Vec<String>;
 
         // Iteration loop
         for iteration in 1..=self.config.max_iterations {
