@@ -13,21 +13,16 @@ use std::path::Path;
 use thiserror::Error;
 
 /// The level of a quality profile.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ProfileLevel {
     /// Minimal quality gates for rapid prototyping
     Minimal,
     /// Standard quality gates for production-ready features
+    #[default]
     Standard,
     /// Comprehensive quality gates for critical features
     Comprehensive,
-}
-
-impl Default for ProfileLevel {
-    fn default() -> Self {
-        Self::Standard
-    }
 }
 
 /// Documentation requirements for a profile.

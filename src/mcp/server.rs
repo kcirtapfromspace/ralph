@@ -38,9 +38,10 @@ use tokio::sync::{watch, RwLock};
 ///
 /// This enum tracks the current state of story execution,
 /// allowing MCP clients to monitor progress and respond appropriately.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum ExecutionState {
     /// No execution in progress
+    #[default]
     Idle,
     /// Currently executing a story
     Running {
@@ -67,12 +68,6 @@ pub enum ExecutionState {
         /// Error message describing the failure
         error: String,
     },
-}
-
-impl Default for ExecutionState {
-    fn default() -> Self {
-        Self::Idle
-    }
 }
 
 /// Shared server state that can be accessed across async contexts.
