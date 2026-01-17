@@ -1,5 +1,7 @@
 # Ralph
 
+[![CI](https://github.com/snarktank/ralph/actions/workflows/ci.yml/badge.svg)](https://github.com/snarktank/ralph/actions/workflows/ci.yml)
+
 ![Ralph](ralph.webp)
 
 Ralph is an autonomous AI agent loop that runs [Amp](https://ampcode.com) repeatedly until all PRD items are complete. Each iteration is a fresh Amp instance with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
