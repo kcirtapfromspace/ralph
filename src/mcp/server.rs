@@ -21,7 +21,7 @@ use crate::mcp::tools::stop_execution::{
     state_description, StopExecutionRequest,
 };
 use crate::quality::QualityConfig;
-use crate::ui::RalphDisplay;
+use crate::ui::{DisplayOptions, RalphDisplay};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -190,6 +190,68 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::new())),
+        }
+    }
+
+    /// Create a new RalphMcpServer with display options.
+    ///
+    /// # Arguments
+    ///
+    /// * `options` - Display options for configuring terminal UI behavior
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ralph::mcp::RalphMcpServer;
+    /// use ralph::ui::{DisplayOptions, UiMode};
+    ///
+    /// let options = DisplayOptions::new()
+    ///     .with_ui_mode(UiMode::Enabled)
+    ///     .with_color(true)
+    ///     .with_quiet(false);
+    /// let server = RalphMcpServer::with_display(options);
+    /// ```
+    pub fn with_display(options: DisplayOptions) -> Self {
+        let (cancel_sender, cancel_receiver) = watch::channel(false);
+        Self {
+            state: Arc::new(RwLock::new(ServerState::default())),
+            config: Arc::new(None),
+            cancel_sender: Arc::new(cancel_sender),
+            cancel_receiver,
+            tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::with_options(options))),
+        }
+    }
+
+    /// Create a new RalphMcpServer with a preloaded PRD and display options.
+    ///
+    /// # Arguments
+    ///
+    /// * `prd_path` - Path to the PRD file to preload
+    /// * `options` - Display options for configuring terminal UI behavior
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use ralph::mcp::RalphMcpServer;
+    /// use ralph::ui::{DisplayOptions, UiMode};
+    /// use std::path::PathBuf;
+    ///
+    /// let options = DisplayOptions::new().with_quiet(true);
+    /// let server = RalphMcpServer::with_prd_and_display(PathBuf::from("prd.json"), options);
+    /// ```
+    pub fn with_prd_and_display(prd_path: PathBuf, options: DisplayOptions) -> Self {
+        let (cancel_sender, cancel_receiver) = watch::channel(false);
+        Self {
+            state: Arc::new(RwLock::new(ServerState {
+                prd_path: Some(prd_path),
+                execution_state: ExecutionState::Idle,
+            })),
+            config: Arc::new(None),
+            cancel_sender: Arc::new(cancel_sender),
+            cancel_receiver,
+            tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::with_options(options))),
         }
     }
 

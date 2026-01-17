@@ -18,6 +18,127 @@ use crate::ui::spinner::{IterationProgress, ProgressManager, RalphSpinner};
 use crate::ui::story_view::{StoryInfo, StoryView, StoryViewState};
 use crate::ui::summary::{ExecutionSummary, GateStatistics, StoryResult, SummaryRenderer};
 
+/// UI mode for terminal display.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum UiMode {
+    /// Auto-detect based on terminal capabilities
+    #[default]
+    Auto,
+    /// Force enable rich terminal UI
+    Enabled,
+    /// Force disable rich terminal UI (plain text only)
+    Disabled,
+}
+
+/// Configuration options for RalphDisplay.
+///
+/// Used to configure display behavior from CLI flags or programmatically.
+#[derive(Debug, Clone, Default)]
+pub struct DisplayOptions {
+    /// UI mode (auto, enabled, or disabled)
+    pub ui_mode: UiMode,
+    /// Whether colors are explicitly enabled/disabled (None = auto-detect)
+    pub color: Option<bool>,
+    /// Whether to suppress all non-error output
+    pub quiet: bool,
+}
+
+impl DisplayOptions {
+    /// Create new display options with defaults.
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Set the UI mode.
+    pub fn with_ui_mode(mut self, mode: UiMode) -> Self {
+        self.ui_mode = mode;
+        self
+    }
+
+    /// Set whether colors are enabled.
+    ///
+    /// Pass `true` to enable colors, `false` to disable.
+    /// This overrides auto-detection and NO_COLOR environment variable.
+    pub fn with_color(mut self, enabled: bool) -> Self {
+        // If --no-color is passed, disable colors. Otherwise, use auto-detect (None).
+        self.color = if enabled { None } else { Some(false) };
+        self
+    }
+
+    /// Explicitly set the color option (Some(true), Some(false), or None for auto).
+    pub fn with_color_option(mut self, color: Option<bool>) -> Self {
+        self.color = color;
+        self
+    }
+
+    /// Set quiet mode.
+    pub fn with_quiet(mut self, quiet: bool) -> Self {
+        self.quiet = quiet;
+        self
+    }
+
+    /// Check if colors should be enabled based on options and environment.
+    ///
+    /// Priority:
+    /// 1. Explicit color option from CLI (--no-color)
+    /// 2. NO_COLOR environment variable
+    /// 3. Default to enabled
+    pub fn should_enable_colors(&self) -> bool {
+        match self.color {
+            Some(enabled) => enabled,
+            None => {
+                // Check NO_COLOR environment variable
+                std::env::var("NO_COLOR").is_err()
+            }
+        }
+    }
+
+    /// Check if rich UI should be enabled based on options and terminal capabilities.
+    ///
+    /// Priority:
+    /// 1. Explicit UI mode (Enabled/Disabled)
+    /// 2. Auto-detect based on terminal capabilities
+    pub fn should_enable_rich_ui(&self) -> bool {
+        match self.ui_mode {
+            UiMode::Enabled => true,
+            UiMode::Disabled => false,
+            UiMode::Auto => Self::detect_rich_ui_support(),
+        }
+    }
+
+    /// Detect if the terminal supports rich UI features.
+    fn detect_rich_ui_support() -> bool {
+        // Check for Ghostty
+        if std::env::var("GHOSTTY_RESOURCES_DIR").is_ok() {
+            return true;
+        }
+
+        // Check for other modern terminals that support 24-bit color
+        if let Ok(term) = std::env::var("TERM") {
+            if term.contains("256color") || term.contains("truecolor") {
+                return true;
+            }
+        }
+
+        // Check COLORTERM for truecolor support
+        if let Ok(colorterm) = std::env::var("COLORTERM") {
+            if colorterm == "truecolor" || colorterm == "24bit" {
+                return true;
+            }
+        }
+
+        // Check for common modern terminal emulators
+        if let Ok(term_program) = std::env::var("TERM_PROGRAM") {
+            let modern_terminals = ["iTerm.app", "WezTerm", "Alacritty", "kitty", "vscode"];
+            if modern_terminals.iter().any(|t| term_program.contains(t)) {
+                return true;
+            }
+        }
+
+        false
+    }
+}
+
 /// Main display controller for Ralph's terminal output.
 ///
 /// Coordinates rendering of story panels, progress indicators,
@@ -26,8 +147,12 @@ use crate::ui::summary::{ExecutionSummary, GateStatistics, StoryResult, SummaryR
 pub struct RalphDisplay {
     /// Color theme for terminal output
     theme: Theme,
-    /// Whether colors are enabled (respects NO_COLOR env var)
+    /// Display options (UI mode, color, quiet)
+    options: DisplayOptions,
+    /// Whether colors are enabled (computed from options)
     colors_enabled: bool,
+    /// Whether rich UI is enabled (computed from options)
+    rich_ui_enabled: bool,
     /// Whether the terminal supports advanced features
     advanced_features: bool,
     /// Progress manager for handling multiple progress indicators
@@ -69,10 +194,19 @@ impl Default for RalphDisplay {
 impl RalphDisplay {
     /// Create a new RalphDisplay with default settings.
     pub fn new() -> Self {
+        Self::with_options(DisplayOptions::default())
+    }
+
+    /// Create a RalphDisplay with the given options.
+    pub fn with_options(options: DisplayOptions) -> Self {
         let theme = Theme::default();
+        let colors_enabled = options.should_enable_colors();
+        let rich_ui_enabled = options.should_enable_rich_ui();
         Self {
             theme,
-            colors_enabled: Self::detect_color_support(),
+            options,
+            colors_enabled,
+            rich_ui_enabled,
             advanced_features: Self::detect_advanced_features(),
             progress_manager: ProgressManager::with_theme(theme),
             active_spinner: None,
@@ -93,9 +227,18 @@ impl RalphDisplay {
 
     /// Create a RalphDisplay with a custom theme.
     pub fn with_theme(theme: Theme) -> Self {
+        Self::with_theme_and_options(theme, DisplayOptions::default())
+    }
+
+    /// Create a RalphDisplay with a custom theme and options.
+    pub fn with_theme_and_options(theme: Theme, options: DisplayOptions) -> Self {
+        let colors_enabled = options.should_enable_colors();
+        let rich_ui_enabled = options.should_enable_rich_ui();
         Self {
             theme,
-            colors_enabled: Self::detect_color_support(),
+            options,
+            colors_enabled,
+            rich_ui_enabled,
             advanced_features: Self::detect_advanced_features(),
             progress_manager: ProgressManager::with_theme(theme),
             active_spinner: None,
@@ -119,6 +262,11 @@ impl RalphDisplay {
         &self.theme
     }
 
+    /// Get the display options.
+    pub fn options(&self) -> &DisplayOptions {
+        &self.options
+    }
+
     /// Check if colors are enabled.
     pub fn colors_enabled(&self) -> bool {
         self.colors_enabled
@@ -129,16 +277,19 @@ impl RalphDisplay {
         self.colors_enabled = enabled;
     }
 
+    /// Check if rich UI is enabled.
+    pub fn rich_ui_enabled(&self) -> bool {
+        self.rich_ui_enabled
+    }
+
+    /// Check if quiet mode is enabled.
+    pub fn is_quiet(&self) -> bool {
+        self.options.quiet
+    }
+
     /// Check if advanced terminal features are available.
     pub fn advanced_features(&self) -> bool {
         self.advanced_features
-    }
-
-    /// Detect if color output should be enabled.
-    ///
-    /// Respects the NO_COLOR environment variable.
-    fn detect_color_support() -> bool {
-        std::env::var("NO_COLOR").is_err()
     }
 
     /// Detect if advanced terminal features are available.

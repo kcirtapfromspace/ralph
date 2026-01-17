@@ -15,7 +15,7 @@ mod story_view;
 mod summary;
 
 pub use colors::Theme;
-pub use display::RalphDisplay;
+pub use display::{DisplayOptions, RalphDisplay, UiMode};
 pub use ghostty::{
     file_hyperlink, file_hyperlink_with_line, hyperlink, GhosttyFeatures, SyncGuard,
     TerminalCapabilities, TitleStatus,
