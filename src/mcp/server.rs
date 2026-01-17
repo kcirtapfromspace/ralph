@@ -3,6 +3,10 @@
 
 #![allow(dead_code)]
 
+use crate::mcp::resources::{
+    list_ralph_resources, read_prd_resource, read_status_resource, ResourceError, PRD_RESOURCE_URI,
+    STATUS_RESOURCE_URI,
+};
 use crate::mcp::tools::get_status::{GetStatusRequest, GetStatusResponse};
 use crate::mcp::tools::list_stories::{load_stories, ListStoriesRequest, ListStoriesResponse};
 use crate::mcp::tools::load_prd::{
@@ -19,7 +23,12 @@ use crate::mcp::tools::stop_execution::{
 use crate::quality::QualityConfig;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
-use rmcp::model::{Implementation, ServerCapabilities, ServerInfo};
+use rmcp::model::{
+    Implementation, ListResourcesResult, PaginatedRequestParam, ReadResourceRequestParam,
+    ReadResourceResult, ServerCapabilities, ServerInfo,
+};
+use rmcp::service::{RequestContext, RoleServer};
+use rmcp::ErrorData as McpError;
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -579,6 +588,72 @@ impl ServerHandler for RalphMcpServer {
                 "Ralph is an autonomous AI agent framework for executing PRD-based user stories."
                     .to_string(),
             ),
+        }
+    }
+
+    /// List available resources.
+    ///
+    /// Returns the list of resources that can be accessed via MCP:
+    /// - `ralph://prd/current` - The currently loaded PRD file contents
+    /// - `ralph://status` - The current execution status
+    fn list_resources(
+        &self,
+        _request: Option<PaginatedRequestParam>,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ListResourcesResult, McpError>> + Send + '_ {
+        std::future::ready(Ok(list_ralph_resources()))
+    }
+
+    /// Read a specific resource by URI.
+    ///
+    /// Supported URIs:
+    /// - `ralph://prd/current` - Returns the contents of the currently loaded PRD file as JSON
+    /// - `ralph://status` - Returns the current execution status as JSON
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The URI is not recognized
+    /// - For `ralph://prd/current`: no PRD is loaded or the file cannot be read
+    fn read_resource(
+        &self,
+        request: ReadResourceRequestParam,
+        _context: RequestContext<RoleServer>,
+    ) -> impl std::future::Future<Output = Result<ReadResourceResult, McpError>> + Send + '_ {
+        let state = self.state.clone();
+
+        async move {
+            let server_state = state.read().await;
+
+            match request.uri.as_str() {
+                PRD_RESOURCE_URI => match read_prd_resource(&server_state.prd_path) {
+                    Ok(contents) => Ok(ReadResourceResult {
+                        contents: vec![contents],
+                    }),
+                    Err(ResourceError::NoPrdLoaded) => Err(McpError::invalid_request(
+                        "No PRD loaded. Use the load_prd tool to load a PRD first.",
+                        None,
+                    )),
+                    Err(ResourceError::PrdReadError(msg)) => Err(McpError::invalid_request(
+                        format!("Failed to read PRD: {}", msg),
+                        None,
+                    )),
+                    Err(ResourceError::UnknownResource(uri)) => Err(McpError::invalid_request(
+                        format!("Unknown resource: {}", uri),
+                        None,
+                    )),
+                },
+                STATUS_RESOURCE_URI => {
+                    let contents = read_status_resource(&server_state.execution_state);
+                    Ok(ReadResourceResult {
+                        contents: vec![contents],
+                    })
+                }
+                _ => Err(McpError::invalid_request(
+                    format!("Unknown resource URI: {}. Available resources: ralph://prd/current, ralph://status", request.uri),
+                    None,
+                )),
+            }
         }
     }
 }
@@ -1490,5 +1565,108 @@ mod tests {
         // Clone should also see the cancel flag (shared state)
         let cloned = server.clone();
         assert!(cloned.is_cancelled());
+    }
+
+    // Note: Tests for list_resources and read_resource functionality
+    // are in src/mcp/resources/mod.rs, which tests the helper functions directly.
+    // Testing the ServerHandler trait methods would require constructing RequestContext,
+    // which uses private rmcp internals. The helper functions provide comprehensive coverage.
+
+    #[test]
+    fn test_list_resources_helper() {
+        // Test the helper function directly
+        let resources = list_ralph_resources();
+        assert_eq!(resources.resources.len(), 2);
+
+        // Check PRD resource
+        assert_eq!(resources.resources[0].raw.uri, "ralph://prd/current");
+        assert_eq!(resources.resources[0].raw.name, "prd");
+        assert_eq!(
+            resources.resources[0].raw.mime_type,
+            Some("application/json".to_string())
+        );
+
+        // Check status resource
+        assert_eq!(resources.resources[1].raw.uri, "ralph://status");
+        assert_eq!(resources.resources[1].raw.name, "status");
+        assert_eq!(
+            resources.resources[1].raw.mime_type,
+            Some("application/json".to_string())
+        );
+    }
+
+    #[test]
+    fn test_read_status_resource_idle() {
+        let state = ExecutionState::Idle;
+        let contents = read_status_resource(&state);
+
+        match contents {
+            rmcp::model::ResourceContents::TextResourceContents {
+                uri,
+                mime_type,
+                text,
+                ..
+            } => {
+                assert_eq!(uri, "ralph://status");
+                assert_eq!(mime_type, Some("application/json".to_string()));
+                let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(json["state"], "idle");
+            }
+            _ => panic!("Expected TextResourceContents"),
+        }
+    }
+
+    #[test]
+    fn test_read_status_resource_running() {
+        let state = ExecutionState::Running {
+            story_id: "US-001".to_string(),
+            started_at: 1234567890,
+            iteration: 5,
+            max_iterations: 10,
+        };
+        let contents = read_status_resource(&state);
+
+        match contents {
+            rmcp::model::ResourceContents::TextResourceContents { text, .. } => {
+                let json: serde_json::Value = serde_json::from_str(&text).unwrap();
+                assert_eq!(json["state"], "running");
+                assert_eq!(json["story_id"], "US-001");
+                assert_eq!(json["progress_percent"], 50);
+            }
+            _ => panic!("Expected TextResourceContents"),
+        }
+    }
+
+    #[test]
+    fn test_read_prd_resource_no_prd() {
+        let result = read_prd_resource(&None);
+        assert!(matches!(result, Err(ResourceError::NoPrdLoaded)));
+    }
+
+    #[test]
+    fn test_read_prd_resource_success() {
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{"project": "Test", "branchName": "main", "userStories": []}"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        let result = read_prd_resource(&Some(file.path().to_path_buf()));
+        assert!(result.is_ok());
+
+        match result.unwrap() {
+            rmcp::model::ResourceContents::TextResourceContents {
+                uri,
+                mime_type,
+                text,
+                ..
+            } => {
+                assert_eq!(uri, "ralph://prd/current");
+                assert_eq!(mime_type, Some("application/json".to_string()));
+                assert_eq!(text, prd_content);
+            }
+            _ => panic!("Expected TextResourceContents"),
+        }
     }
 }
