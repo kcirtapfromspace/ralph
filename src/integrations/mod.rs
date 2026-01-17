@@ -8,11 +8,15 @@
 pub mod github;
 pub mod linear;
 pub mod registry;
+pub mod sync_engine;
 pub mod traits;
 
 pub use github::{GitHubConfig, GitHubProjectsProvider};
 pub use linear::{LinearConfig, LinearProvider};
 pub use registry::ProviderRegistry;
+pub use sync_engine::{
+    ConflictStrategy, Story, SyncAction, SyncConfig, SyncEngine, SyncResult, SyncSummary,
+};
 pub use traits::{
     CreateItemRequest, FailureIssueRequest, ItemInfo, ItemStatus, ProjectTracker, TrackerError,
     TrackerResult, UpdateItemRequest,
