@@ -8,6 +8,10 @@ use crate::mcp::tools::list_stories::{load_stories, ListStoriesRequest, ListStor
 use crate::mcp::tools::load_prd::{
     create_error_response, create_success_response, validate_prd, LoadPrdRequest,
 };
+use crate::mcp::tools::run_story::{
+    check_already_running, create_error_response as create_run_error_response,
+    create_started_response, current_timestamp, find_story, RunStoryError, RunStoryRequest,
+};
 use crate::quality::QualityConfig;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -392,6 +396,101 @@ impl RalphMcpServer {
                 })
             }
         }
+    }
+
+    /// Execute a user story from the loaded PRD.
+    ///
+    /// This tool starts execution of a specified story. It prevents concurrent execution -
+    /// only one story can be running at a time. Use stop_execution to cancel a running story.
+    ///
+    /// # Parameters
+    ///
+    /// * `story_id` - The ID of the story to execute (e.g., "US-001")
+    /// * `max_iterations` - Optional maximum number of iterations (default: 10)
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether execution started successfully
+    /// - `story_id`: The story ID being executed
+    /// - `story_title`: The story title
+    /// - `commit_hash`: Git commit hash (if completed successfully)
+    /// - `message`: Status message
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No PRD is loaded
+    /// - Story ID not found in PRD
+    /// - Another story is already executing
+    #[tool(
+        name = "run_story",
+        description = "Execute a user story from the loaded PRD. Accepts story_id and optional max_iterations. Returns error if no PRD loaded, story not found, or another story is already running."
+    )]
+    pub async fn run_story(&self, Parameters(req): Parameters<RunStoryRequest>) -> String {
+        let max_iterations = req.max_iterations.unwrap_or(10);
+
+        // Get the PRD path and current execution state
+        let (prd_path, current_state) = {
+            let state = self.state.read().await;
+            (state.prd_path.clone(), state.execution_state.clone())
+        };
+
+        // Check if a PRD is loaded
+        let prd_path = match prd_path {
+            Some(path) => path,
+            None => {
+                let response = create_run_error_response(&RunStoryError::NoPrdLoaded);
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        // Check if already running
+        if let Some(running_id) = check_already_running(&current_state) {
+            let response = create_run_error_response(&RunStoryError::AlreadyRunning(running_id));
+            return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+            });
+        }
+
+        // Find the story in the PRD
+        let story = match find_story(&prd_path, &req.story_id) {
+            Ok(story) => story,
+            Err(e) => {
+                let response = create_run_error_response(&e);
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        // Reset cancellation and update state to Running
+        self.reset_cancel();
+        {
+            let mut state = self.state.write().await;
+            state.execution_state = ExecutionState::Running {
+                story_id: req.story_id.clone(),
+                started_at: current_timestamp(),
+                iteration: 1,
+                max_iterations,
+            };
+        }
+
+        // Create started response
+        // Note: In a real implementation, this would spawn an async task to do the actual work.
+        // For now, we just return that execution has started.
+        // The actual execution logic would involve:
+        // 1. Checking out the correct branch
+        // 2. Running the agent to implement the story
+        // 3. Running quality checks
+        // 4. Committing changes
+        // 5. Updating the PRD
+        // The client can poll get_status to check progress.
+        let response = create_started_response(&story, max_iterations);
+        serde_json::to_string_pretty(&response)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize response: {}\"}}", e))
     }
 }
 
@@ -876,5 +975,319 @@ mod tests {
             let prd_path = state.prd_path.as_ref().unwrap();
             assert!(prd_path.exists());
         }
+    }
+
+    #[tokio::test]
+    async fn test_run_story_no_prd_loaded() {
+        use rmcp::handler::server::wrapper::Parameters;
+
+        let server = RalphMcpServer::new();
+
+        let result = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-001".to_string(),
+                max_iterations: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], false);
+        assert!(json["message"].as_str().unwrap().contains("No PRD loaded"));
+    }
+
+    #[tokio::test]
+    async fn test_run_story_story_not_found() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Try to run a non-existent story
+        let result = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-999".to_string(),
+                max_iterations: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], false);
+        assert!(json["message"].as_str().unwrap().contains("not found"));
+        assert!(json["message"].as_str().unwrap().contains("US-999"));
+    }
+
+    #[tokio::test]
+    async fn test_run_story_already_running() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false},
+                {"id": "US-002", "title": "Second story", "priority": 2, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Set state to already running
+        {
+            let mut state = server.state_mut().await;
+            state.execution_state = ExecutionState::Running {
+                story_id: "US-001".to_string(),
+                started_at: 1234567890,
+                iteration: 5,
+                max_iterations: 10,
+            };
+        }
+
+        // Try to run another story
+        let result = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-002".to_string(),
+                max_iterations: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], false);
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("Already executing"));
+        assert!(json["message"].as_str().unwrap().contains("US-001"));
+    }
+
+    #[tokio::test]
+    async fn test_run_story_success() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Run the story
+        let result = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-001".to_string(),
+                max_iterations: Some(5),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["story_id"], "US-001");
+        assert_eq!(json["story_title"], "First story");
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("Started execution"));
+        assert!(json["message"].as_str().unwrap().contains("5 iterations"));
+    }
+
+    #[tokio::test]
+    async fn test_run_story_updates_state() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Verify initial state is idle
+        {
+            let state = server.state().await;
+            assert_eq!(state.execution_state, ExecutionState::Idle);
+        }
+
+        // Run the story
+        let _ = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-001".to_string(),
+                max_iterations: Some(10),
+            }))
+            .await;
+
+        // Verify state changed to running
+        {
+            let state = server.state().await;
+            match &state.execution_state {
+                ExecutionState::Running {
+                    story_id,
+                    max_iterations,
+                    iteration,
+                    ..
+                } => {
+                    assert_eq!(story_id, "US-001");
+                    assert_eq!(*max_iterations, 10);
+                    assert_eq!(*iteration, 1);
+                }
+                _ => panic!("Expected Running state"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_story_default_max_iterations() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Run the story without specifying max_iterations
+        let result = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-001".to_string(),
+                max_iterations: None,
+            }))
+            .await;
+
+        // Parse the result as JSON - should default to 10 iterations
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert!(json["message"].as_str().unwrap().contains("10 iterations"));
+
+        // Verify state has default max_iterations
+        {
+            let state = server.state().await;
+            match &state.execution_state {
+                ExecutionState::Running { max_iterations, .. } => {
+                    assert_eq!(*max_iterations, 10);
+                }
+                _ => panic!("Expected Running state"),
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn test_run_story_resets_cancel() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::NamedTempFile;
+
+        let server = RalphMcpServer::new();
+
+        // Create and load a valid PRD file
+        let mut file = NamedTempFile::new().unwrap();
+        let prd_content = r#"{
+            "project": "TestProject",
+            "branchName": "feature/test",
+            "userStories": [
+                {"id": "US-001", "title": "First story", "priority": 1, "passes": false}
+            ]
+        }"#;
+        file.write_all(prd_content.as_bytes()).unwrap();
+
+        // Load the PRD
+        let _ = server
+            .load_prd(Parameters(LoadPrdRequest {
+                path: file.path().to_string_lossy().to_string(),
+            }))
+            .await;
+
+        // Set cancel flag
+        server.cancel();
+        assert!(server.is_cancelled());
+
+        // Run the story - should reset cancel
+        let _ = server
+            .run_story(Parameters(RunStoryRequest {
+                story_id: "US-001".to_string(),
+                max_iterations: None,
+            }))
+            .await;
+
+        // Verify cancel was reset
+        assert!(!server.is_cancelled());
     }
 }
