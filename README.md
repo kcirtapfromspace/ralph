@@ -16,68 +16,91 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
 ## Setup
 
-### Option 1: Copy to your project
+### Global Installation (Recommended)
 
-Copy the ralph files into your project:
+Clone the repo and run the installer:
 
 ```bash
-# From your project root
+git clone https://github.com/kcirtapfromspace/ralph.git
+cd ralph
+./install.sh
+```
+
+This creates a symlink in `/usr/local/bin`. For a different location:
+
+```bash
+./install.sh ~/bin        # Install to ~/bin
+sudo ./install.sh         # If you need sudo for /usr/local/bin
+```
+
+To uninstall:
+```bash
+./uninstall.sh
+```
+
+### Alternative: Copy to project
+
+If you prefer to keep ralph in your project:
+
+```bash
 mkdir -p scripts/ralph
 cp /path/to/ralph/ralph.sh scripts/ralph/
 cp /path/to/ralph/prompt.md scripts/ralph/
 chmod +x scripts/ralph/ralph.sh
 ```
 
-### Option 2: Use skills as prompts
-
-The `skills/` directory contains prompt templates that can be used with Claude Code:
+## Usage
 
 ```bash
-# To use a skill, simply reference its content in your prompt
-cat skills/prd/SKILL.md | claude --print "Use these instructions to create a PRD for [feature]"
+ralph [OPTIONS] [max_iterations]
+
+Options:
+  -d, --dir <path>       Working directory (default: current directory)
+  -p, --prompt <file>    Custom prompt file
+  -n, --iterations <n>   Max iterations (default: 10)
+  -i, --init             Initialize project with prd.json template
+  -h, --help             Show help
+  -v, --version          Show version
+
+Examples:
+  ralph                  Run in current directory with defaults
+  ralph 20               Run with 20 max iterations
+  ralph -d ./my-project  Run in specified directory
+  ralph --init           Create prd.json template
 ```
-
-### Configure Claude Code (optional)
-
-Claude Code can be configured via `~/.claude/settings.json`. See the [Claude Code documentation](https://docs.anthropic.com/en/docs/claude-code) for available settings.
-
-For large stories that may require multiple context windows, consider breaking them into smaller tasks as described in the "Small Tasks" section below.
 
 ## Workflow
 
-### 1. Create a PRD
-
-Use the PRD prompt template to generate a detailed requirements document:
+### 1. Initialize your project
 
 ```bash
-# Use the PRD template with Claude Code
-cat skills/prd/SKILL.md | claude --print "Create a PRD for [your feature description]"
+cd your-project
+ralph --init
 ```
 
-Or interactively:
-```
-claude "Read skills/prd/SKILL.md and use those instructions to create a PRD for [your feature description]"
-```
+This creates a `prd.json` template.
 
-Answer the clarifying questions. The PRD will be saved to `tasks/prd-[feature-name].md`.
+### 2. Define your tasks
 
-### 2. Convert PRD to Ralph format
+Edit `prd.json` with your user stories. Each story should be small enough to complete in one iteration. See `prd.json.example` for the format.
 
-Use the Ralph converter template to convert the markdown PRD to JSON:
+You can also use Claude to help create PRDs:
 
 ```bash
-cat skills/ralph/SKILL.md | claude --print "Convert tasks/prd-[feature-name].md to prd.json"
-```
+# Use the PRD template
+cat $(ralph --home)/skills/prd/SKILL.md | claude --print "Create a PRD for [feature]"
 
-This creates `prd.json` with user stories structured for autonomous execution.
+# Then convert to ralph format
+cat $(ralph --home)/skills/ralph/SKILL.md | claude --print "Convert this PRD to prd.json"
+```
 
 ### 3. Run Ralph
 
 ```bash
-./scripts/ralph/ralph.sh [max_iterations]
+ralph              # Run with defaults (10 iterations)
+ralph 20           # Run with 20 max iterations
+ralph -d ./other   # Run in different directory
 ```
-
-Default is 10 iterations.
 
 Ralph will:
 1. Create a feature branch (from PRD `branchName`)
@@ -93,14 +116,21 @@ Ralph will:
 
 | File | Purpose |
 |------|---------|
-| `ralph.sh` | The bash loop that spawns fresh Claude Code instances |
+| `bin/ralph` | Global CLI binary |
+| `install.sh` | Installer script |
 | `prompt.md` | Instructions given to each Claude Code instance |
-| `prd.json` | User stories with `passes` status (the task list) |
 | `prd.json.example` | Example PRD format for reference |
-| `progress.txt` | Append-only learnings for future iterations |
 | `skills/prd/` | Prompt template for generating PRDs |
 | `skills/ralph/` | Prompt template for converting PRDs to JSON |
 | `flowchart/` | Interactive visualization of how Ralph works |
+
+**In your project directory:**
+
+| File | Purpose |
+|------|---------|
+| `prd.json` | User stories with `passes` status (created by `ralph --init`) |
+| `progress.txt` | Append-only learnings for future iterations |
+| `archive/` | Previous run archives |
 
 ## Flowchart
 

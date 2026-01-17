@@ -7,19 +7,32 @@ Ralph is an autonomous AI agent loop that runs Claude Code repeatedly until all 
 ## Commands
 
 ```bash
+# Install ralph globally
+./install.sh
+
+# Initialize a project
+ralph --init
+
+# Run Ralph in current directory
+ralph
+
+# Run with max 20 iterations
+ralph 20
+
+# Run in a specific directory
+ralph -d /path/to/project
+
+# Show help
+ralph --help
+
 # Run the flowchart dev server
 cd flowchart && npm run dev
-
-# Build the flowchart
-cd flowchart && npm run build
-
-# Run Ralph (from your project that has prd.json)
-./ralph.sh [max_iterations]
 ```
 
 ## Key Files
 
-- `ralph.sh` - The bash loop that spawns fresh Claude Code instances
+- `bin/ralph` - Global CLI binary
+- `install.sh` - Installer script
 - `prompt.md` - Instructions given to each Claude Code instance
 - `prd.json.example` - Example PRD format
 - `flowchart/` - Interactive React Flow diagram explaining how Ralph works
