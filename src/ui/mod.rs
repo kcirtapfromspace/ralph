@@ -7,8 +7,12 @@
 
 mod colors;
 mod display;
+mod spinner;
 mod story_view;
 
 pub use colors::Theme;
 pub use display::RalphDisplay;
+pub use spinner::{
+    progress_chars, spinner_chars, IterationProgress, ProgressManager, RalphSpinner, SpinnerStyle,
+};
 pub use story_view::{StoryInfo, StoryView, StoryViewState};

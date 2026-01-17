@@ -5,6 +5,7 @@
 #![allow(dead_code)]
 
 use crate::ui::colors::Theme;
+use crate::ui::spinner::{IterationProgress, ProgressManager, RalphSpinner};
 
 /// Main display controller for Ralph's terminal output.
 ///
@@ -18,6 +19,12 @@ pub struct RalphDisplay {
     colors_enabled: bool,
     /// Whether the terminal supports advanced features
     advanced_features: bool,
+    /// Progress manager for handling multiple progress indicators
+    progress_manager: ProgressManager,
+    /// Current active spinner (if any)
+    active_spinner: Option<RalphSpinner>,
+    /// Current iteration progress bar (if any)
+    iteration_progress: Option<IterationProgress>,
 }
 
 impl Default for RalphDisplay {
@@ -29,10 +36,14 @@ impl Default for RalphDisplay {
 impl RalphDisplay {
     /// Create a new RalphDisplay with default settings.
     pub fn new() -> Self {
+        let theme = Theme::default();
         Self {
-            theme: Theme::default(),
+            theme,
             colors_enabled: Self::detect_color_support(),
             advanced_features: Self::detect_advanced_features(),
+            progress_manager: ProgressManager::with_theme(theme),
+            active_spinner: None,
+            iteration_progress: None,
         }
     }
 
@@ -42,6 +53,9 @@ impl RalphDisplay {
             theme,
             colors_enabled: Self::detect_color_support(),
             advanced_features: Self::detect_advanced_features(),
+            progress_manager: ProgressManager::with_theme(theme),
+            active_spinner: None,
+            iteration_progress: None,
         }
     }
 
@@ -96,5 +110,138 @@ impl RalphDisplay {
         }
 
         false
+    }
+
+    // =========================================================================
+    // Spinner Management
+    // =========================================================================
+
+    /// Start a spinner with the given action message.
+    ///
+    /// If a spinner is already active, it will be stopped first.
+    /// The spinner displays elapsed time and the current action.
+    pub fn start_spinner(&mut self, message: impl Into<String>) {
+        // Stop any existing spinner first
+        self.stop_spinner();
+
+        let spinner = self.progress_manager.add_spinner(message);
+        self.active_spinner = Some(spinner);
+    }
+
+    /// Stop the current spinner with a success message.
+    ///
+    /// If no spinner is active, this is a no-op.
+    pub fn stop_spinner_with_success(&mut self, message: impl Into<String>) {
+        if let Some(spinner) = self.active_spinner.take() {
+            spinner.finish_with_success(message);
+        }
+    }
+
+    /// Stop the current spinner with an error message.
+    ///
+    /// If no spinner is active, this is a no-op.
+    pub fn stop_spinner_with_error(&mut self, message: impl Into<String>) {
+        if let Some(spinner) = self.active_spinner.take() {
+            spinner.finish_with_error(message);
+        }
+    }
+
+    /// Stop the current spinner and clear it from the display.
+    ///
+    /// If no spinner is active, this is a no-op.
+    pub fn stop_spinner(&mut self) {
+        if let Some(spinner) = self.active_spinner.take() {
+            spinner.finish_and_clear();
+        }
+    }
+
+    /// Update the message on the current spinner.
+    ///
+    /// If no spinner is active, this is a no-op.
+    pub fn update_spinner_message(&self, message: impl Into<String>) {
+        if let Some(ref spinner) = self.active_spinner {
+            spinner.set_message(message);
+        }
+    }
+
+    /// Check if a spinner is currently active.
+    pub fn has_active_spinner(&self) -> bool {
+        self.active_spinner.is_some()
+    }
+
+    // =========================================================================
+    // Iteration Progress Management
+    // =========================================================================
+
+    /// Start an iteration progress bar with the given total iterations.
+    ///
+    /// If a progress bar is already active, it will be stopped first.
+    pub fn start_iteration_progress(&mut self, total: u64) {
+        // Stop any existing progress bar first
+        self.stop_iteration_progress();
+
+        let progress = self.progress_manager.add_iteration_progress(total);
+        self.iteration_progress = Some(progress);
+    }
+
+    /// Increment the iteration progress by one.
+    ///
+    /// If no progress bar is active, this is a no-op.
+    pub fn inc_iteration(&mut self) {
+        if let Some(ref mut progress) = self.iteration_progress {
+            progress.inc();
+        }
+    }
+
+    /// Set the current iteration position.
+    ///
+    /// If no progress bar is active, this is a no-op.
+    pub fn set_iteration(&mut self, pos: u64) {
+        if let Some(ref mut progress) = self.iteration_progress {
+            progress.set_position(pos);
+        }
+    }
+
+    /// Get the current iteration count.
+    ///
+    /// Returns 0 if no progress bar is active.
+    pub fn current_iteration(&self) -> u64 {
+        self.iteration_progress
+            .as_ref()
+            .map(|p| p.current())
+            .unwrap_or(0)
+    }
+
+    /// Get the total iteration count.
+    ///
+    /// Returns 0 if no progress bar is active.
+    pub fn total_iterations(&self) -> u64 {
+        self.iteration_progress
+            .as_ref()
+            .map(|p| p.total())
+            .unwrap_or(0)
+    }
+
+    /// Stop and clear the iteration progress bar.
+    ///
+    /// If no progress bar is active, this is a no-op.
+    pub fn stop_iteration_progress(&mut self) {
+        if let Some(progress) = self.iteration_progress.take() {
+            progress.finish_and_clear();
+        }
+    }
+
+    /// Finish the iteration progress bar (keeps it visible).
+    ///
+    /// If no progress bar is active, this is a no-op.
+    pub fn finish_iteration_progress(&mut self) {
+        if let Some(progress) = self.iteration_progress.take() {
+            progress.finish();
+        }
+    }
+
+    /// Get the progress manager for advanced multi-progress use.
+    pub fn progress_manager(&self) -> &ProgressManager {
+        &self.progress_manager
     }
 }
