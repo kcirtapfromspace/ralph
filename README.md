@@ -1,6 +1,6 @@
 # Ralph
 
-[![CI](https://github.com/snarktank/ralph/actions/workflows/ci.yml/badge.svg)](https://github.com/snarktank/ralph/actions/workflows/ci.yml)
+[![CI](https://github.com/kcirtapfromspace/ralph/actions/workflows/ci.yml/badge.svg)](https://github.com/kcirtapfromspace/ralph/actions/workflows/ci.yml)
 
 ![Ralph](ralph.webp)
 

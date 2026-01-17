@@ -70,6 +70,7 @@ jobs:
       - name: Build release binary
         run: cargo build --release --target ${{ matrix.target }}
         env:
+          # This env var only affects aarch64-unknown-linux-gnu builds; harmless for other targets
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
 
       - name: Upload artifact

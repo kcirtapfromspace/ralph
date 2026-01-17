@@ -148,7 +148,7 @@ impl QualityConfig {
     /// # Environment Variable Overrides
     ///
     /// Environment variables can override configuration values using the format:
-    /// `RALPH_<SECTION>_<KEY>` (e.g., `RALPH_PROFILES_MINIMAL_TESTING_COVERAGE_THRESHOLD=50`)
+    /// `RALPH__<SECTION>__<KEY>` (e.g., `RALPH__PROFILES__MINIMAL__TESTING__COVERAGE_THRESHOLD=50`)
     ///
     /// # Errors
     ///

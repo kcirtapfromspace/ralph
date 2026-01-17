@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 description = "Enterprise-ready autonomous AI agent framework"
 license = "MIT"
-repository = "https://github.com/your-org/ralph"
+repository = "https://github.com/kcirtapfromspace/ralph"
 
 [dependencies]
 async-trait = "0.1"

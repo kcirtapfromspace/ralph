@@ -86,6 +86,7 @@ impl LinearProvider {
         let response = self
             .client
             .post(LINEAR_API_URL)
+            // Linear API uses the API key directly without "Bearer" prefix
             .header("Authorization", &self.config.api_key)
             .header("Content-Type", "application/json")
             .json(&request_body)
