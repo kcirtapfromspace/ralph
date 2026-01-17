@@ -21,6 +21,7 @@ use crate::mcp::tools::stop_execution::{
     state_description, StopExecutionRequest,
 };
 use crate::quality::QualityConfig;
+use crate::ui::RalphDisplay;
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::{
@@ -110,6 +111,8 @@ pub struct RalphMcpServer {
     cancel_receiver: watch::Receiver<bool>,
     /// Tool router for MCP tools
     tool_router: ToolRouter<Self>,
+    /// Display controller for terminal UI
+    display: Arc<RwLock<RalphDisplay>>,
 }
 
 impl RalphMcpServer {
@@ -130,6 +133,7 @@ impl RalphMcpServer {
             cancel_sender: Arc::new(cancel_sender),
             cancel_receiver,
             tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::new())),
         }
     }
 
@@ -158,6 +162,7 @@ impl RalphMcpServer {
             cancel_sender: Arc::new(cancel_sender),
             cancel_receiver,
             tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::new())),
         }
     }
 
@@ -184,6 +189,7 @@ impl RalphMcpServer {
             cancel_sender: Arc::new(cancel_sender),
             cancel_receiver,
             tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::new())),
         }
     }
 
@@ -234,6 +240,48 @@ impl RalphMcpServer {
     /// This can be passed to async tasks that need to check for cancellation.
     pub fn cancel_receiver(&self) -> watch::Receiver<bool> {
         self.cancel_receiver.clone()
+    }
+
+    /// Get read access to the display controller.
+    ///
+    /// Returns a read guard that provides immutable access to the display.
+    pub async fn display(&self) -> tokio::sync::RwLockReadGuard<'_, RalphDisplay> {
+        self.display.read().await
+    }
+
+    /// Get write access to the display controller.
+    ///
+    /// Returns a write guard that provides mutable access to the display.
+    pub async fn display_mut(&self) -> tokio::sync::RwLockWriteGuard<'_, RalphDisplay> {
+        self.display.write().await
+    }
+
+    /// Update the display based on the current execution state.
+    ///
+    /// This method reads the current execution state and updates the UI accordingly.
+    /// Call this after state transitions to keep the terminal display in sync.
+    pub async fn update_display(&self) {
+        let state = {
+            let server_state = self.state.read().await;
+            server_state.execution_state.clone()
+        };
+
+        let mut display = self.display.write().await;
+        display.update_from_state(&state, None);
+    }
+
+    /// Update the display with story information.
+    ///
+    /// This method reads the current execution state and updates the UI,
+    /// including displaying story details when available.
+    pub async fn update_display_with_story(&self, story_info: Option<&crate::ui::StoryInfo>) {
+        let state = {
+            let server_state = self.state.read().await;
+            server_state.execution_state.clone()
+        };
+
+        let mut display = self.display.write().await;
+        display.update_from_state(&state, story_info);
     }
 }
 

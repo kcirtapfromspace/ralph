@@ -6,10 +6,17 @@
 
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
+use crate::mcp::server::ExecutionState;
+use crate::quality::gates::GateResult;
 use crate::ui::colors::Theme;
+use crate::ui::ghostty::{GhosttyFeatures, TitleStatus};
 use crate::ui::interrupt::InterruptHandler;
+use crate::ui::quality_gates::{QualityGateRenderer, QualityGateView};
 use crate::ui::spinner::{IterationProgress, ProgressManager, RalphSpinner};
+use crate::ui::story_view::{StoryInfo, StoryView, StoryViewState};
+use crate::ui::summary::{ExecutionSummary, GateStatistics, StoryResult, SummaryRenderer};
 
 /// Main display controller for Ralph's terminal output.
 ///
@@ -33,6 +40,24 @@ pub struct RalphDisplay {
     interrupt_handler: InterruptHandler,
     /// Current story ID being processed (for interrupt display)
     current_story_id: Option<String>,
+    /// Ghostty terminal features
+    ghostty: GhosttyFeatures,
+    /// Last execution state seen (for detecting transitions)
+    last_state: Option<ExecutionState>,
+    /// Story view renderer
+    story_view: StoryView,
+    /// Quality gate renderer
+    gate_renderer: QualityGateRenderer,
+    /// Summary renderer
+    summary_renderer: SummaryRenderer,
+    /// Accumulated story results for summary
+    story_results: Vec<StoryResult>,
+    /// Accumulated gate statistics
+    gate_stats: GateStatistics,
+    /// Execution start time
+    execution_start: Option<Instant>,
+    /// Commit count
+    commit_count: u32,
 }
 
 impl Default for RalphDisplay {
@@ -54,6 +79,15 @@ impl RalphDisplay {
             iteration_progress: None,
             interrupt_handler: InterruptHandler::with_theme(theme),
             current_story_id: None,
+            ghostty: GhosttyFeatures::new(),
+            last_state: None,
+            story_view: StoryView::with_theme(theme),
+            gate_renderer: QualityGateRenderer::with_theme(theme),
+            summary_renderer: SummaryRenderer::with_theme(theme),
+            story_results: Vec::new(),
+            gate_stats: GateStatistics::default(),
+            execution_start: None,
+            commit_count: 0,
         }
     }
 
@@ -68,6 +102,15 @@ impl RalphDisplay {
             iteration_progress: None,
             interrupt_handler: InterruptHandler::with_theme(theme),
             current_story_id: None,
+            ghostty: GhosttyFeatures::new(),
+            last_state: None,
+            story_view: StoryView::with_theme(theme),
+            gate_renderer: QualityGateRenderer::with_theme(theme),
+            summary_renderer: SummaryRenderer::with_theme(theme),
+            story_results: Vec::new(),
+            gate_stats: GateStatistics::default(),
+            execution_start: None,
+            commit_count: 0,
         }
     }
 
@@ -324,4 +367,408 @@ impl RalphDisplay {
     pub fn interrupt_handler(&self) -> &InterruptHandler {
         &self.interrupt_handler
     }
+
+    // =========================================================================
+    // State Change Handling
+    // =========================================================================
+
+    /// Update the display based on a new execution state.
+    ///
+    /// This method detects state transitions and updates the UI accordingly:
+    /// - Idle -> Running: Start spinner, show story panel, update title
+    /// - Running -> Running: Update iteration progress
+    /// - Running -> Completed: Stop spinner with success, record result
+    /// - Running -> Failed: Stop spinner with error, record result
+    /// - Any -> Idle: Reset UI state
+    ///
+    /// # Arguments
+    /// * `state` - The new execution state
+    /// * `story_info` - Optional story information for display
+    pub fn update_from_state(&mut self, state: &ExecutionState, story_info: Option<&StoryInfo>) {
+        // Detect state transition
+        let transition = self.detect_transition(state);
+
+        match transition {
+            StateTransition::ToRunning {
+                story_id,
+                max_iterations,
+            } => {
+                self.handle_start_running(&story_id, max_iterations, story_info);
+            }
+            StateTransition::IterationUpdate { iteration, max } => {
+                self.handle_iteration_update(iteration, max);
+            }
+            StateTransition::ToCompleted {
+                story_id,
+                commit_hash,
+            } => {
+                self.handle_completed(&story_id, commit_hash.as_deref(), story_info);
+            }
+            StateTransition::ToFailed { story_id, error } => {
+                self.handle_failed(&story_id, &error, story_info);
+            }
+            StateTransition::ToIdle => {
+                self.handle_idle();
+            }
+            StateTransition::None => {
+                // No transition, nothing to update
+            }
+        }
+
+        // Update the last seen state
+        self.last_state = Some(state.clone());
+    }
+
+    /// Detect the type of state transition.
+    fn detect_transition(&self, new_state: &ExecutionState) -> StateTransition {
+        match (&self.last_state, new_state) {
+            // Transition to Running
+            (None | Some(ExecutionState::Idle), ExecutionState::Running { story_id, max_iterations, .. })
+            | (Some(ExecutionState::Completed { .. }), ExecutionState::Running { story_id, max_iterations, .. })
+            | (Some(ExecutionState::Failed { .. }), ExecutionState::Running { story_id, max_iterations, .. }) => {
+                StateTransition::ToRunning {
+                    story_id: story_id.clone(),
+                    max_iterations: *max_iterations,
+                }
+            }
+            // Iteration update (still running)
+            (
+                Some(ExecutionState::Running {
+                    iteration: old_iter,
+                    ..
+                }),
+                ExecutionState::Running {
+                    iteration: new_iter,
+                    max_iterations,
+                    ..
+                },
+            ) if old_iter != new_iter => StateTransition::IterationUpdate {
+                iteration: *new_iter,
+                max: *max_iterations,
+            },
+            // Transition to Completed
+            (Some(ExecutionState::Running { .. }), ExecutionState::Completed { story_id, commit_hash }) => {
+                StateTransition::ToCompleted {
+                    story_id: story_id.clone(),
+                    commit_hash: commit_hash.clone(),
+                }
+            }
+            // Transition to Failed
+            (Some(ExecutionState::Running { .. }), ExecutionState::Failed { story_id, error }) => {
+                StateTransition::ToFailed {
+                    story_id: story_id.clone(),
+                    error: error.clone(),
+                }
+            }
+            // Transition to Idle (reset)
+            (Some(_), ExecutionState::Idle) => StateTransition::ToIdle,
+            // No transition (same state)
+            _ => StateTransition::None,
+        }
+    }
+
+    /// Handle transition to Running state.
+    fn handle_start_running(
+        &mut self,
+        story_id: &str,
+        max_iterations: u32,
+        story_info: Option<&StoryInfo>,
+    ) {
+        // Record execution start time
+        self.execution_start = Some(Instant::now());
+
+        // Set the current story for interrupt display
+        self.set_current_story(story_id);
+
+        // Start the iteration progress bar
+        self.start_iteration_progress(max_iterations as u64);
+        self.set_iteration(1);
+
+        // Start a spinner for the current action
+        self.start_spinner(format!("Running story {}...", story_id));
+
+        // Display the story panel if info is available
+        if let Some(info) = story_info {
+            let panel = self.story_view.render_current_story(info, StoryViewState::InProgress);
+            println!("{}", panel);
+        }
+
+        // Update terminal title
+        let _ = self.ghostty.update_title(
+            Some(story_id),
+            Some((1, max_iterations as u64)),
+            TitleStatus::Running,
+        );
+    }
+
+    /// Handle iteration progress update.
+    fn handle_iteration_update(&mut self, iteration: u32, max: u32) {
+        // Update the progress bar
+        self.set_iteration(iteration as u64);
+
+        // Update the spinner message
+        self.update_spinner_message(format!("Iteration {}/{}...", iteration, max));
+
+        // Update terminal title
+        let story_id = self.current_story_id.as_deref();
+        let _ = self.ghostty.update_title(
+            story_id,
+            Some((iteration as u64, max as u64)),
+            TitleStatus::Running,
+        );
+    }
+
+    /// Handle transition to Completed state.
+    fn handle_completed(
+        &mut self,
+        story_id: &str,
+        commit_hash: Option<&str>,
+        story_info: Option<&StoryInfo>,
+    ) {
+        // Stop the spinner with success
+        self.stop_spinner_with_success(format!("Story {} completed!", story_id));
+
+        // Finish the iteration progress
+        self.finish_iteration_progress();
+
+        // Record the story result
+        let iterations = self.current_iteration() as u32;
+        let title = story_info.map(|i| i.title.clone()).unwrap_or_default();
+        self.story_results.push(StoryResult::passed(story_id, title, iterations));
+
+        // Increment commit count if we have a commit
+        if commit_hash.is_some() {
+            self.commit_count += 1;
+        }
+
+        // Display completed story panel
+        if let Some(info) = story_info {
+            let panel = self.story_view.render_current_story(info, StoryViewState::Completed);
+            println!("{}", panel);
+        }
+
+        // Update terminal title
+        let _ = self.ghostty.update_title(
+            Some(story_id),
+            None,
+            TitleStatus::Success,
+        );
+
+        // Clear the current story
+        self.clear_current_story();
+    }
+
+    /// Handle transition to Failed state.
+    fn handle_failed(
+        &mut self,
+        story_id: &str,
+        error: &str,
+        story_info: Option<&StoryInfo>,
+    ) {
+        // Stop the spinner with error
+        self.stop_spinner_with_error(format!("Story {} failed: {}", story_id, error));
+
+        // Stop the iteration progress
+        self.stop_iteration_progress();
+
+        // Record the story result
+        let iterations = self.current_iteration() as u32;
+        let title = story_info.map(|i| i.title.clone()).unwrap_or_default();
+        self.story_results.push(StoryResult::failed(story_id, title, iterations));
+
+        // Display failed story panel
+        if let Some(info) = story_info {
+            let panel = self.story_view.render_current_story(info, StoryViewState::Failed);
+            println!("{}", panel);
+        }
+
+        // Update terminal title
+        let _ = self.ghostty.update_title(
+            Some(story_id),
+            None,
+            TitleStatus::Failed,
+        );
+
+        // Clear the current story
+        self.clear_current_story();
+    }
+
+    /// Handle transition to Idle state.
+    fn handle_idle(&mut self) {
+        // Stop any active spinners
+        self.stop_spinner();
+        self.stop_iteration_progress();
+
+        // Reset terminal title
+        let _ = self.ghostty.reset_title();
+
+        // Clear the current story
+        self.clear_current_story();
+    }
+
+    // =========================================================================
+    // Quality Gate Display
+    // =========================================================================
+
+    /// Display quality gates during the gate checking phase.
+    ///
+    /// Shows the current state of all quality gates with pass/fail indicators.
+    pub fn display_quality_gates(&self, gates: &[QualityGateView]) {
+        let output = self.gate_renderer.render_gates(gates);
+        println!("{}", output);
+    }
+
+    /// Display quality gate results from GateResult slice.
+    pub fn display_gate_results(&mut self, results: &[GateResult]) {
+        let output = self.gate_renderer.render_from_results(results);
+        println!("{}", output);
+
+        // Accumulate gate statistics
+        for result in results {
+            self.gate_stats.total_runs += 1;
+            if result.message.contains("Skipped") {
+                self.gate_stats.total_skipped += 1;
+            } else if result.passed {
+                self.gate_stats.total_passes += 1;
+            } else {
+                self.gate_stats.total_failures += 1;
+            }
+        }
+    }
+
+    /// Display a compact summary bar for quality gates.
+    pub fn display_gate_summary(&self, gates: &[QualityGateView]) {
+        let output = self.gate_renderer.render_summary_bar(gates);
+        println!("{}", output);
+    }
+
+    /// Start a spinner for quality gate checking.
+    pub fn start_gate_checking_spinner(&mut self) {
+        self.start_spinner("Running quality gates...");
+    }
+
+    /// Stop the quality gate spinner with results.
+    pub fn stop_gate_checking_spinner(&mut self, all_passed: bool) {
+        if all_passed {
+            self.stop_spinner_with_success("All quality gates passed!");
+        } else {
+            self.stop_spinner_with_error("Some quality gates failed");
+        }
+    }
+
+    // =========================================================================
+    // Summary Display
+    // =========================================================================
+
+    /// Display the completion summary.
+    ///
+    /// Shows comprehensive results including story outcomes,
+    /// quality gate statistics, and execution metrics.
+    pub fn display_summary(&self) {
+        let duration = self.execution_start
+            .map(|start| start.elapsed())
+            .unwrap_or(Duration::ZERO);
+
+        let total_iterations: u32 = self.story_results.iter().map(|s| s.iterations).sum();
+
+        let summary = ExecutionSummary::new(
+            self.story_results.clone(),
+            total_iterations,
+            duration,
+            self.commit_count,
+            self.gate_stats.clone(),
+        );
+
+        let output = self.summary_renderer.render(&summary);
+        println!("{}", output);
+    }
+
+    /// Trigger the summary view when all stories are complete.
+    ///
+    /// Call this method when the PRD indicates all stories have passed.
+    pub fn trigger_completion_summary(&self) {
+        // Update terminal title to show completion
+        let all_passed = self.story_results.iter().all(|s| s.passed);
+        let status = if all_passed { TitleStatus::Success } else { TitleStatus::Failed };
+        let _ = self.ghostty.update_title(None, None, status);
+
+        // Display the summary
+        self.display_summary();
+
+        // Reset the terminal title after a moment
+        let _ = self.ghostty.reset_title();
+    }
+
+    /// Reset the display state for a new execution session.
+    pub fn reset_session(&mut self) {
+        self.story_results.clear();
+        self.gate_stats = GateStatistics::default();
+        self.execution_start = None;
+        self.commit_count = 0;
+        self.last_state = None;
+        self.current_story_id = None;
+        self.stop_spinner();
+        self.stop_iteration_progress();
+        let _ = self.ghostty.reset_title();
+    }
+
+    /// Get the accumulated story results.
+    pub fn story_results(&self) -> &[StoryResult] {
+        &self.story_results
+    }
+
+    /// Get the accumulated gate statistics.
+    pub fn gate_statistics(&self) -> &GateStatistics {
+        &self.gate_stats
+    }
+
+    /// Get the Ghostty features interface.
+    pub fn ghostty(&self) -> &GhosttyFeatures {
+        &self.ghostty
+    }
+
+    // =========================================================================
+    // Story Panel Display
+    // =========================================================================
+
+    /// Display the current story panel.
+    pub fn display_current_story(&self, story: &StoryInfo, state: StoryViewState) {
+        let panel = self.story_view.render_current_story(story, state);
+        println!("{}", panel);
+    }
+
+    /// Display the next story preview panel.
+    pub fn display_next_story(&self, story: &StoryInfo) {
+        let panel = self.story_view.render_next_story(story);
+        println!("{}", panel);
+    }
+}
+
+/// Internal enum representing state transitions.
+#[derive(Debug)]
+enum StateTransition {
+    /// Transitioning to Running state
+    ToRunning {
+        story_id: String,
+        max_iterations: u32,
+    },
+    /// Iteration count updated while running
+    IterationUpdate {
+        iteration: u32,
+        max: u32,
+    },
+    /// Transitioning to Completed state
+    ToCompleted {
+        story_id: String,
+        commit_hash: Option<String>,
+    },
+    /// Transitioning to Failed state
+    ToFailed {
+        story_id: String,
+        error: String,
+    },
+    /// Transitioning to Idle state
+    ToIdle,
+    /// No transition (same state)
+    None,
 }
