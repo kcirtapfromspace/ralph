@@ -10,6 +10,8 @@ repository = "https://github.com/your-org/ralph"
 async-trait = "0.1"
 clap = { version = "4", features = ["derive"] }
 config = { version = "0.14", default-features = false, features = ["toml"] }
+graphql_client = { version = "0.14", features = ["reqwest"] }
+octocrab = "0.42"
 regex = "1"
 rmcp = { version = "0.8", features = ["server", "transport-io", "macros"] }
 schemars = "1.0"
