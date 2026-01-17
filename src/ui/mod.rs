@@ -7,6 +7,7 @@
 
 mod colors;
 mod display;
+mod ghostty;
 mod interrupt;
 mod quality_gates;
 mod spinner;
@@ -14,6 +15,10 @@ mod story_view;
 
 pub use colors::Theme;
 pub use display::RalphDisplay;
+pub use ghostty::{
+    file_hyperlink, file_hyperlink_with_line, hyperlink, GhosttyFeatures, SyncGuard,
+    TerminalCapabilities, TitleStatus,
+};
 pub use interrupt::{
     is_globally_interrupted, render_interrupt_panel, reset_global_interrupt, InterruptHandler,
 };
