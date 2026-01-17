@@ -470,6 +470,225 @@ impl QualityGateChecker {
         result
     }
 
+    /// Check for security vulnerabilities using cargo-audit.
+    ///
+    /// Runs `cargo audit` to check for known security vulnerabilities in dependencies.
+    ///
+    /// # Returns
+    ///
+    /// A `GateResult` indicating whether any vulnerabilities were found.
+    /// If cargo-audit is not installed, returns a failure with installation instructions.
+    pub fn check_security_audit(&self) -> GateResult {
+        if !self.profile.security.cargo_audit {
+            return GateResult::skipped("security_audit", "Security audit not enabled in profile");
+        }
+
+        // Check if cargo-audit is installed
+        let check_installed = Command::new("cargo")
+            .args(["audit", "--version"])
+            .current_dir(&self.project_root)
+            .output();
+
+        match check_installed {
+            Ok(output) if output.status.success() => {
+                // cargo-audit is installed, run the audit
+                self.run_cargo_audit()
+            }
+            _ => {
+                // cargo-audit is not installed
+                GateResult::fail(
+                    "security_audit",
+                    "cargo-audit is not installed",
+                    Some(
+                        "Install cargo-audit: cargo install cargo-audit\n\
+                         cargo-audit checks for known security vulnerabilities in dependencies."
+                            .to_string(),
+                    ),
+                )
+            }
+        }
+    }
+
+    /// Run cargo audit and parse the results.
+    fn run_cargo_audit(&self) -> GateResult {
+        // Run cargo audit with JSON output for easier parsing
+        let output = Command::new("cargo")
+            .args(["audit", "--json"])
+            .current_dir(&self.project_root)
+            .output();
+
+        match output {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout);
+                let stderr = String::from_utf8_lossy(&output.stderr);
+
+                // Try to parse JSON output first
+                if let Some(result) = self.parse_audit_json(&stdout) {
+                    return result;
+                }
+
+                // If JSON parsing fails, fall back to exit code and text parsing
+                if output.status.success() {
+                    GateResult::pass("security_audit", "No known vulnerabilities found")
+                } else {
+                    // Non-zero exit means vulnerabilities found or error
+                    let details = Self::extract_audit_vulnerabilities(&stdout, &stderr);
+                    GateResult::fail(
+                        "security_audit",
+                        "Security vulnerabilities found",
+                        Some(details),
+                    )
+                }
+            }
+            Err(e) => GateResult::fail(
+                "security_audit",
+                "Failed to run cargo audit",
+                Some(format!("Error: {}", e)),
+            ),
+        }
+    }
+
+    /// Parse cargo audit JSON output.
+    fn parse_audit_json(&self, json_str: &str) -> Option<GateResult> {
+        // cargo audit --json outputs a JSON object with vulnerabilities
+        // Format: { "vulnerabilities": { "count": N, "list": [...] }, ... }
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(json_str) {
+            let vuln_count = json
+                .get("vulnerabilities")
+                .and_then(|v| v.get("count"))
+                .and_then(|c| c.as_u64())
+                .unwrap_or(0);
+
+            if vuln_count == 0 {
+                return Some(GateResult::pass(
+                    "security_audit",
+                    "No known vulnerabilities found",
+                ));
+            }
+
+            // Extract vulnerability details
+            let details = self.format_vulnerabilities_from_json(&json, vuln_count);
+            return Some(GateResult::fail(
+                "security_audit",
+                format!(
+                    "Found {} known vulnerabilit{}",
+                    vuln_count,
+                    if vuln_count == 1 { "y" } else { "ies" }
+                ),
+                Some(details),
+            ));
+        }
+
+        None
+    }
+
+    /// Format vulnerability details from JSON output.
+    fn format_vulnerabilities_from_json(&self, json: &serde_json::Value, count: u64) -> String {
+        let mut details = format!(
+            "{} vulnerabilit{} found:\n\n",
+            count,
+            if count == 1 { "y" } else { "ies" }
+        );
+
+        if let Some(list) = json
+            .get("vulnerabilities")
+            .and_then(|v| v.get("list"))
+            .and_then(|l| l.as_array())
+        {
+            for (i, vuln) in list.iter().take(10).enumerate() {
+                let advisory = vuln.get("advisory");
+                let id = advisory
+                    .and_then(|a| a.get("id"))
+                    .and_then(|i| i.as_str())
+                    .unwrap_or("Unknown");
+                let title = advisory
+                    .and_then(|a| a.get("title"))
+                    .and_then(|t| t.as_str())
+                    .unwrap_or("Unknown");
+                let severity = advisory
+                    .and_then(|a| a.get("severity"))
+                    .and_then(|s| s.as_str())
+                    .unwrap_or("unknown");
+                let package_name = vuln
+                    .get("package")
+                    .and_then(|p| p.get("name"))
+                    .and_then(|n| n.as_str())
+                    .unwrap_or("unknown");
+                let package_version = vuln
+                    .get("package")
+                    .and_then(|p| p.get("version"))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown");
+
+                details.push_str(&format!(
+                    "{}. {} ({})\n   Package: {} v{}\n   Severity: {}\n\n",
+                    i + 1,
+                    id,
+                    title,
+                    package_name,
+                    package_version,
+                    severity
+                ));
+            }
+
+            if list.len() > 10 {
+                details.push_str(&format!("... and {} more\n", list.len() - 10));
+            }
+        }
+
+        details.push_str("\nRun `cargo audit` for full details.");
+        details
+    }
+
+    /// Extract vulnerability information from text output.
+    fn extract_audit_vulnerabilities(stdout: &str, stderr: &str) -> String {
+        let mut result = String::new();
+
+        // Look for vulnerability indicators in the output
+        let combined = format!("{}\n{}", stdout, stderr);
+
+        // Count warnings/errors
+        let warning_count = combined.matches("warning:").count();
+        let error_count = combined.matches("error:").count();
+
+        if warning_count > 0 || error_count > 0 {
+            result.push_str(&format!(
+                "Found {} warning(s) and {} error(s)\n\n",
+                warning_count, error_count
+            ));
+        }
+
+        // Extract lines containing vulnerability IDs (RUSTSEC-YYYY-NNNN)
+        let vuln_lines: Vec<&str> = combined
+            .lines()
+            .filter(|line| {
+                line.contains("RUSTSEC-")
+                    || line.contains("Crate:")
+                    || line.contains("Version:")
+                    || line.contains("Title:")
+                    || line.contains("warning:")
+                    || line.contains("error:")
+            })
+            .take(50)
+            .collect();
+
+        if !vuln_lines.is_empty() {
+            result.push_str(&vuln_lines.join("\n"));
+        } else if !combined.trim().is_empty() {
+            // If no structured output found, include the raw output (limited)
+            let truncated: String = combined.chars().take(2000).collect();
+            result.push_str(&truncated);
+            if combined.len() > 2000 {
+                result.push_str("\n... (output truncated)");
+            }
+        } else {
+            result.push_str("Security audit failed (no additional details available)");
+        }
+
+        result.push_str("\n\nRun `cargo audit` for full details.");
+        result
+    }
+
     /// Run all quality gates configured in the profile.
     ///
     /// Returns a vector of `GateResult` for each gate that was run.
@@ -479,31 +698,12 @@ impl QualityGateChecker {
     ///
     /// A `Vec<GateResult>` containing the results of all gates.
     pub fn run_all(&self) -> Vec<GateResult> {
-        let mut results = Vec::new();
-
-        // Check coverage gate
-        results.push(self.check_coverage());
-
-        // Check lint gate
-        results.push(self.check_lint());
-
-        // Check format gate
-        results.push(self.check_format());
-
-        // Check security audit gate (will be implemented in US-012)
-        if self.profile.security.cargo_audit {
-            results.push(GateResult::skipped(
-                "security_audit",
-                "Security audit not yet implemented",
-            ));
-        } else {
-            results.push(GateResult::skipped(
-                "security_audit",
-                "Security audit not enabled in profile",
-            ));
-        }
-
-        results
+        vec![
+            self.check_coverage(),
+            self.check_lint(),
+            self.check_format(),
+            self.check_security_audit(),
+        ]
     }
 
     /// Check if all gates passed.
@@ -914,5 +1114,230 @@ warning: function `foo` is never used
         let stderr = "error: couldn't parse file";
         let result = QualityGateChecker::extract_format_errors(stdout, stderr);
         assert!(result.contains("couldn't parse"));
+    }
+
+    // Security audit gate tests
+
+    #[test]
+    fn test_check_security_audit_disabled() {
+        let profile = create_test_profile(0, false, false, false);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+        let result = checker.check_security_audit();
+
+        assert!(result.passed);
+        assert_eq!(result.gate_name, "security_audit");
+        assert!(result.message.contains("Skipped"));
+        assert!(result.message.contains("not enabled"));
+    }
+
+    #[test]
+    fn test_check_security_audit_enabled() {
+        // This test runs against a real project directory if available
+        let profile = create_test_profile(0, false, false, true);
+        // Use the actual Ralph project directory for testing
+        let project_root = std::env::current_dir().unwrap_or_else(|_| "/tmp/test".into());
+        let checker = QualityGateChecker::new(profile, &project_root);
+        let result = checker.check_security_audit();
+
+        assert_eq!(result.gate_name, "security_audit");
+        // Result depends on whether cargo-audit is installed and if vulnerabilities exist
+        if result.passed {
+            assert!(result.message.contains("No known vulnerabilities"));
+        } else {
+            // Could fail due to: not installed, vulnerabilities found, or command error
+            assert!(
+                result.message.contains("not installed")
+                    || result.message.contains("vulnerabilit")
+                    || result.message.contains("Failed"),
+                "Unexpected failure message: {}",
+                result.message
+            );
+        }
+    }
+
+    #[test]
+    fn test_parse_audit_json_no_vulnerabilities() {
+        let profile = create_test_profile(0, false, false, true);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+
+        let json = r#"{
+            "database": {},
+            "lockfile": {},
+            "vulnerabilities": {
+                "count": 0,
+                "list": []
+            }
+        }"#;
+
+        let result = checker.parse_audit_json(json);
+        assert!(result.is_some());
+        let gate_result = result.unwrap();
+        assert!(gate_result.passed);
+        assert!(gate_result.message.contains("No known vulnerabilities"));
+    }
+
+    #[test]
+    fn test_parse_audit_json_with_vulnerabilities() {
+        let profile = create_test_profile(0, false, false, true);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+
+        let json = r#"{
+            "database": {},
+            "lockfile": {},
+            "vulnerabilities": {
+                "count": 2,
+                "list": [
+                    {
+                        "advisory": {
+                            "id": "RUSTSEC-2021-0001",
+                            "title": "Test vulnerability 1",
+                            "severity": "high"
+                        },
+                        "package": {
+                            "name": "test-crate",
+                            "version": "1.0.0"
+                        }
+                    },
+                    {
+                        "advisory": {
+                            "id": "RUSTSEC-2021-0002",
+                            "title": "Test vulnerability 2",
+                            "severity": "medium"
+                        },
+                        "package": {
+                            "name": "another-crate",
+                            "version": "2.0.0"
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let result = checker.parse_audit_json(json);
+        assert!(result.is_some());
+        let gate_result = result.unwrap();
+        assert!(!gate_result.passed);
+        assert!(gate_result.message.contains("2 known vulnerabilities"));
+        let details = gate_result.details.unwrap();
+        assert!(details.contains("RUSTSEC-2021-0001"));
+        assert!(details.contains("RUSTSEC-2021-0002"));
+        assert!(details.contains("test-crate"));
+        assert!(details.contains("high"));
+    }
+
+    #[test]
+    fn test_parse_audit_json_single_vulnerability() {
+        let profile = create_test_profile(0, false, false, true);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+
+        let json = r#"{
+            "vulnerabilities": {
+                "count": 1,
+                "list": [
+                    {
+                        "advisory": {
+                            "id": "RUSTSEC-2022-0001",
+                            "title": "Single vuln",
+                            "severity": "critical"
+                        },
+                        "package": {
+                            "name": "vulnerable-crate",
+                            "version": "0.1.0"
+                        }
+                    }
+                ]
+            }
+        }"#;
+
+        let result = checker.parse_audit_json(json);
+        assert!(result.is_some());
+        let gate_result = result.unwrap();
+        assert!(!gate_result.passed);
+        // Check singular form
+        assert!(gate_result.message.contains("1 known vulnerability"));
+    }
+
+    #[test]
+    fn test_parse_audit_json_invalid() {
+        let profile = create_test_profile(0, false, false, true);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+
+        assert!(checker.parse_audit_json("not json").is_none());
+        assert!(checker.parse_audit_json("{}").is_some()); // Valid JSON but no vulnerabilities = 0 count = pass
+    }
+
+    #[test]
+    fn test_extract_audit_vulnerabilities_with_rustsec() {
+        let stdout = r#"
+Crate:   test-crate
+Version: 1.0.0
+Title:   Test vulnerability
+RUSTSEC-2021-0001
+        "#;
+        let stderr = "";
+
+        let result = QualityGateChecker::extract_audit_vulnerabilities(stdout, stderr);
+        assert!(result.contains("RUSTSEC-2021-0001"));
+        assert!(result.contains("Crate:"));
+        assert!(result.contains("cargo audit"));
+    }
+
+    #[test]
+    fn test_extract_audit_vulnerabilities_with_warnings() {
+        let stdout = "";
+        let stderr = r#"
+warning: 1 vulnerability found!
+warning: some other warning
+error: critical issue
+        "#;
+
+        let result = QualityGateChecker::extract_audit_vulnerabilities(stdout, stderr);
+        assert!(result.contains("warning(s)"));
+        assert!(result.contains("error(s)"));
+    }
+
+    #[test]
+    fn test_extract_audit_vulnerabilities_empty() {
+        let stdout = "";
+        let stderr = "";
+
+        let result = QualityGateChecker::extract_audit_vulnerabilities(stdout, stderr);
+        assert!(result.contains("no additional details"));
+    }
+
+    #[test]
+    fn test_format_vulnerabilities_from_json() {
+        let profile = create_test_profile(0, false, false, true);
+        let checker = QualityGateChecker::new(profile, "/tmp/test");
+
+        let json: serde_json::Value = serde_json::from_str(
+            r#"{
+            "vulnerabilities": {
+                "count": 1,
+                "list": [
+                    {
+                        "advisory": {
+                            "id": "RUSTSEC-2023-0001",
+                            "title": "Memory safety issue",
+                            "severity": "high"
+                        },
+                        "package": {
+                            "name": "unsafe-crate",
+                            "version": "3.0.0"
+                        }
+                    }
+                ]
+            }
+        }"#,
+        )
+        .unwrap();
+
+        let details = checker.format_vulnerabilities_from_json(&json, 1);
+        assert!(details.contains("1 vulnerability found"));
+        assert!(details.contains("RUSTSEC-2023-0001"));
+        assert!(details.contains("Memory safety issue"));
+        assert!(details.contains("unsafe-crate"));
+        assert!(details.contains("v3.0.0"));
+        assert!(details.contains("high"));
     }
 }
