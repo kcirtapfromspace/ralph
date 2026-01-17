@@ -114,6 +114,9 @@ pub struct RalphMcpServer {
     tool_router: ToolRouter<Self>,
     /// Display controller for terminal UI
     display: Arc<RwLock<RalphDisplay>>,
+    /// Test-only: Override agent detection with a mock agent name
+    #[cfg(test)]
+    test_agent_override: Option<String>,
 }
 
 impl RalphMcpServer {
@@ -135,6 +138,25 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::new())),
+            #[cfg(test)]
+            test_agent_override: None,
+        }
+    }
+
+    /// Create a new RalphMcpServer for testing with a mock agent.
+    ///
+    /// This bypasses the real agent detection and uses the provided agent name.
+    #[cfg(test)]
+    pub fn new_for_test(agent_name: &str) -> Self {
+        let (cancel_sender, cancel_receiver) = watch::channel(false);
+        Self {
+            state: Arc::new(RwLock::new(ServerState::default())),
+            config: Arc::new(None),
+            cancel_sender: Arc::new(cancel_sender),
+            cancel_receiver,
+            tool_router: Self::tool_router(),
+            display: Arc::new(RwLock::new(RalphDisplay::new())),
+            test_agent_override: Some(agent_name.to_string()),
         }
     }
 
@@ -164,6 +186,8 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::new())),
+            #[cfg(test)]
+            test_agent_override: None,
         }
     }
 
@@ -191,6 +215,8 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::new())),
+            #[cfg(test)]
+            test_agent_override: None,
         }
     }
 
@@ -221,6 +247,8 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::with_options(options))),
+            #[cfg(test)]
+            test_agent_override: None,
         }
     }
 
@@ -253,6 +281,8 @@ impl RalphMcpServer {
             cancel_receiver,
             tool_router: Self::tool_router(),
             display: Arc::new(RwLock::new(RalphDisplay::with_options(options))),
+            #[cfg(test)]
+            test_agent_override: None,
         }
     }
 
@@ -597,8 +627,13 @@ impl RalphMcpServer {
             };
         }
 
-        // Detect available agent
-        let agent_command = match detect_agent() {
+        // Detect available agent (use test override if available)
+        #[cfg(test)]
+        let detected_agent = self.test_agent_override.clone().or_else(detect_agent);
+        #[cfg(not(test))]
+        let detected_agent = detect_agent();
+
+        let agent_command = match detected_agent {
             Some(agent) => agent,
             None => {
                 // Reset state to idle since we can't run
@@ -1437,7 +1472,7 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let server = RalphMcpServer::new();
+        let server = RalphMcpServer::new_for_test("mock-agent");
 
         // Create and load a valid PRD file
         let mut file = NamedTempFile::new().unwrap();
@@ -1483,7 +1518,7 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let server = RalphMcpServer::new();
+        let server = RalphMcpServer::new_for_test("mock-agent");
 
         // Create and load a valid PRD file
         let mut file = NamedTempFile::new().unwrap();
@@ -1542,7 +1577,7 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let server = RalphMcpServer::new();
+        let server = RalphMcpServer::new_for_test("mock-agent");
 
         // Create and load a valid PRD file
         let mut file = NamedTempFile::new().unwrap();
@@ -1593,7 +1628,7 @@ mod tests {
         use std::io::Write;
         use tempfile::NamedTempFile;
 
-        let server = RalphMcpServer::new();
+        let server = RalphMcpServer::new_for_test("mock-agent");
 
         // Create and load a valid PRD file
         let mut file = NamedTempFile::new().unwrap();
