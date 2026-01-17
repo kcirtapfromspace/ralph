@@ -2,9 +2,12 @@
 //!
 //! This module contains quality profiles and gate checking functionality.
 
+pub mod gates;
 pub mod profiles;
 
-// Re-exports for convenience - will be used in future stories (US-009+)
+// Re-exports for convenience - will be used by CLI and MCP in future stories
+#[allow(unused_imports)]
+pub use gates::{GateResult, QualityGateChecker};
 #[allow(unused_imports)]
 pub use profiles::{
     BlogConfig, CiConfig, DocumentationConfig, Profile, ProfileLevel, QualityConfig,
