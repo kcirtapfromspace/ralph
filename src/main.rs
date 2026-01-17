@@ -10,6 +10,7 @@ use mcp::RalphMcpServer;
 
 #[derive(Parser, Debug)]
 #[command(name = "ralph")]
+#[command(version)]
 #[command(about = "Enterprise-ready autonomous AI agent framework")]
 struct Cli {
     #[command(subcommand)]
