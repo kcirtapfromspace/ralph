@@ -41,9 +41,9 @@ impl Default for Theme {
             in_progress: Rgb(59, 130, 246),
             muted: Rgb(107, 114, 128),
             story_id: Rgb(34, 211, 238),
-            active: Rgb(255, 165, 0),      // Orange for active/important items
+            active: Rgb(255, 165, 0), // Orange for active/important items
             completed: Rgb(128, 128, 128), // Dim gray for completed items
-            primary: Rgb(255, 255, 255),   // White for primary text
+            primary: Rgb(255, 255, 255), // White for primary text
         }
     }
 }

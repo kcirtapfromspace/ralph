@@ -345,10 +345,7 @@ impl CollapsibleIterationSummary {
 
         // Commit info if present
         if let Some(ref hash) = self.commit_hash {
-            output.push_str(&format!(
-                "Commit: {}\n",
-                hash.color(self.theme.story_id)
-            ));
+            output.push_str(&format!("Commit: {}\n", hash.color(self.theme.story_id)));
         }
 
         // File changes if present
@@ -400,7 +397,11 @@ impl CollapsibleIterationSummary {
 
         // Header
         let header = self.render_header();
-        output.push_str(&format!("│ {:<width$} │\n", header, width = inner_width - 2));
+        output.push_str(&format!(
+            "│ {:<width$} │\n",
+            header,
+            width = inner_width - 2
+        ));
 
         // Separator
         output.push_str(&format!(

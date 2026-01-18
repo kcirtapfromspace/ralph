@@ -37,7 +37,9 @@ pub mod spinner_chars {
     pub const ARROW: &[&str] = &["←", "↖", "↑", "↗", "→", "↘", "↓", "↙"];
 
     /// Clock spinner pattern - clock hands
-    pub const CLOCK: &[&str] = &["🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛"];
+    pub const CLOCK: &[&str] = &[
+        "🕐", "🕑", "🕒", "🕓", "🕔", "🕕", "🕖", "🕗", "🕘", "🕙", "🕚", "🕛",
+    ];
 }
 
 /// Blinking indicator styles.
@@ -753,12 +755,7 @@ impl LiveStatusIndicator {
     /// Render with ANSI blinking enabled.
     pub fn render_with_blink(&self) -> String {
         if self.active {
-            format!(
-                "{}{}{}",
-                ansi::BLINK_START,
-                self.render(),
-                ansi::BLINK_END
-            )
+            format!("{}{}{}", ansi::BLINK_START, self.render(), ansi::BLINK_END)
         } else {
             self.render()
         }

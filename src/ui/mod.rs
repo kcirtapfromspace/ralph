@@ -26,10 +26,6 @@ mod tui_runner;
 pub use collapsible::{
     CollapsibleIterationSummary, CollapsibleSection, CollapsibleState, StreamingDisplayOptions,
 };
-pub use keyboard::{
-    render_compact_hint, render_toggle_hint, KeyBindings, KeyboardListener, ListenerHandle,
-    ToggleEvent, ToggleState,
-};
 pub use colors::{
     active_text, ansi, blinking_text, completed_text, muted_text, primary_text, StyledText, Theme,
 };
@@ -49,6 +45,10 @@ pub use interrupt::{
 pub use iteration_view::{
     ActivityIndicator, GateProgress, GateProgressInfo, GateSummary, IterationPreview,
     IterationSummary, IterationSummaryStack, LiveIterationPanel,
+};
+pub use keyboard::{
+    render_compact_hint, render_toggle_hint, KeyBindings, KeyboardListener, ListenerHandle,
+    ToggleEvent, ToggleState,
 };
 pub use kitty_graphics::{display_mascot, mascot_inline_string, ImagePlacement, KittyGraphics};
 pub use mascot::{random_image_mascot, AnimationConfig, Mascot, MascotRenderer, PeekAnimation};
