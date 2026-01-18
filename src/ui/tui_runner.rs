@@ -7,6 +7,7 @@
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
+use crate::ui::display::DisplayOptions;
 use crate::ui::tui::{
     AnimationState, CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary,
     IterationWidget, StoryHeaderWidget, StoryProgressWidget, StoryState,
@@ -39,6 +40,8 @@ pub struct TuiRunnerDisplay {
     term_width: usize,
     /// Whether quiet mode is enabled
     quiet: bool,
+    /// Display options for enhanced UX features
+    display_options: DisplayOptions,
 }
 
 impl Default for TuiRunnerDisplay {
@@ -64,12 +67,34 @@ impl TuiRunnerDisplay {
             use_colors: true,
             term_width,
             quiet: false,
+            display_options: DisplayOptions::default(),
+        }
+    }
+
+    /// Create a TUI runner display with custom display options.
+    pub fn with_display_options(options: DisplayOptions) -> Self {
+        let term_width = terminal_width();
+        Self {
+            animation: AnimationState::new(30),
+            current_story_id: None,
+            current_story_title: None,
+            current_story_priority: 1,
+            stories: Vec::new(),
+            current_iteration: 0,
+            max_iterations: 10,
+            gates: Vec::new(),
+            start_time: None,
+            use_colors: options.should_enable_colors(),
+            term_width,
+            quiet: options.quiet,
+            display_options: options,
         }
     }
 
     /// Set quiet mode.
     pub fn with_quiet(mut self, quiet: bool) -> Self {
         self.quiet = quiet;
+        self.display_options.quiet = quiet;
         self
     }
 
@@ -77,6 +102,21 @@ impl TuiRunnerDisplay {
     pub fn with_colors(mut self, use_colors: bool) -> Self {
         self.use_colors = use_colors;
         self
+    }
+
+    /// Check if streaming output should be shown.
+    pub fn should_show_streaming(&self) -> bool {
+        self.display_options.should_show_streaming()
+    }
+
+    /// Check if details should be expanded.
+    pub fn should_expand_details(&self) -> bool {
+        self.display_options.should_expand_details()
+    }
+
+    /// Get the verbosity level.
+    pub fn verbosity(&self) -> u8 {
+        self.display_options.verbosity
     }
 
     /// Initialize stories from PRD data.

@@ -57,6 +57,22 @@ struct Cli {
     #[arg(long, short)]
     quiet: bool,
 
+    /// Verbose output - show streaming and expanded details
+    #[arg(long, short, conflicts_with = "quiet")]
+    verbose: bool,
+
+    /// Very verbose output - show all internal details (use -vv for shorthand)
+    #[arg(long, conflicts_with = "quiet")]
+    very_verbose: bool,
+
+    /// Show streaming output (under the hood view)
+    #[arg(long)]
+    show_streaming: bool,
+
+    /// Expand detailed sections by default
+    #[arg(long)]
+    expand_details: bool,
+
     /// Print help information with styled output
     #[arg(long, short)]
     help: bool,
@@ -122,10 +138,22 @@ enum Commands {
 
 /// Build display options from CLI arguments
 fn build_display_options(cli: &Cli) -> DisplayOptions {
+    // Determine verbosity level
+    let verbosity = if cli.very_verbose {
+        2
+    } else if cli.verbose {
+        1
+    } else {
+        0
+    };
+
     DisplayOptions::new()
         .with_ui_mode(cli.ui.into())
         .with_color(!cli.no_color)
         .with_quiet(cli.quiet)
+        .with_verbosity(verbosity)
+        .with_streaming(cli.show_streaming || cli.verbose || cli.very_verbose)
+        .with_expand_details(cli.expand_details || cli.verbose || cli.very_verbose)
 }
 
 #[tokio::main]
@@ -280,6 +308,7 @@ async fn run_stories(
     max_iterations: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let working_dir = dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let display_options = build_display_options(cli);
 
     let config = RunnerConfig {
         prd_path: if prd.is_absolute() {
@@ -291,7 +320,7 @@ async fn run_stories(
         max_iterations_per_story: max_iterations,
         max_total_iterations: 0, // unlimited
         agent_command: None,     // auto-detect
-        quiet: cli.quiet,
+        display_options,
     };
 
     let runner = Runner::new(config);

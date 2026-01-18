@@ -6,7 +6,7 @@ use tokio::sync::watch;
 
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
-use crate::ui::TuiRunnerDisplay;
+use crate::ui::{DisplayOptions, TuiRunnerDisplay};
 
 /// Configuration for the runner
 #[derive(Debug, Clone)]
@@ -21,8 +21,8 @@ pub struct RunnerConfig {
     pub max_total_iterations: u32,
     /// Agent command to use (auto-detect if None)
     pub agent_command: Option<String>,
-    /// Quiet mode - suppress output
-    pub quiet: bool,
+    /// Display options for UI rendering (includes quiet mode, verbosity, etc.)
+    pub display_options: DisplayOptions,
 }
 
 impl Default for RunnerConfig {
@@ -33,7 +33,7 @@ impl Default for RunnerConfig {
             max_iterations_per_story: 10,
             max_total_iterations: 0, // unlimited
             agent_command: None,
-            quiet: false,
+            display_options: DisplayOptions::default(),
         }
     }
 }
@@ -69,8 +69,9 @@ impl Runner {
     pub async fn run(&self) -> RunResult {
         let mut total_iterations: u32 = 0;
 
-        // Create TUI display
-        let mut display = TuiRunnerDisplay::new().with_quiet(self.config.quiet);
+        // Create TUI display with display options
+        let mut display =
+            TuiRunnerDisplay::with_display_options(self.config.display_options.clone());
 
         // Load and validate PRD
         let prd = match self.load_prd() {

@@ -183,6 +183,26 @@ pub const GLOBAL_OPTIONS: &[CommandInfo] = &[
     ),
     CommandInfo::new("--no-animation", "Disable startup animations", None),
     CommandInfo::new("--quiet, -q", "Suppress all output except errors", None),
+    CommandInfo::new(
+        "--verbose, -v",
+        "Show streaming output and expanded details",
+        None,
+    ),
+    CommandInfo::new(
+        "--very-verbose",
+        "Show all internal details (maximum verbosity)",
+        None,
+    ),
+    CommandInfo::new(
+        "--show-streaming",
+        "Show streaming output (under the hood view)",
+        None,
+    ),
+    CommandInfo::new(
+        "--expand-details",
+        "Expand detailed sections by default",
+        None,
+    ),
     CommandInfo::new("--help, -h", "Print help information", None),
     CommandInfo::new(
         "--version, -V",
