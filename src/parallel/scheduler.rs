@@ -2,6 +2,11 @@
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::Arc;
+
+use tokio::sync::{RwLock, Semaphore};
+
+use crate::runner::RunnerConfig;
 
 /// Configuration options for parallel story execution.
 #[allow(dead_code)]
@@ -41,4 +46,40 @@ pub struct ParallelExecutionState {
     pub failed: HashMap<String, String>,
     /// Files currently locked by stories, mapped from file path to story ID.
     pub locked_files: HashMap<PathBuf, String>,
+}
+
+/// The main parallel runner that executes multiple stories concurrently.
+///
+/// This struct manages parallel story execution with concurrency limiting
+/// via a semaphore and shared execution state protected by a read-write lock.
+#[allow(dead_code)]
+pub struct ParallelRunner {
+    /// Configuration for parallel execution settings.
+    config: ParallelRunnerConfig,
+    /// Base runner configuration (paths, limits, etc.).
+    base_config: RunnerConfig,
+    /// Semaphore for limiting concurrent story executions.
+    semaphore: Arc<Semaphore>,
+    /// Shared execution state tracking in-flight, completed, and failed stories.
+    execution_state: Arc<RwLock<ParallelExecutionState>>,
+}
+
+#[allow(dead_code)]
+impl ParallelRunner {
+    /// Create a new parallel runner with the given configurations.
+    ///
+    /// # Arguments
+    /// * `config` - Parallel execution settings (concurrency, inference, fallback)
+    /// * `base_config` - Base runner configuration (paths, iteration limits)
+    pub fn new(config: ParallelRunnerConfig, base_config: RunnerConfig) -> Self {
+        let semaphore = Arc::new(Semaphore::new(config.max_concurrency as usize));
+        let execution_state = Arc::new(RwLock::new(ParallelExecutionState::default()));
+
+        Self {
+            config,
+            base_config,
+            semaphore,
+            execution_state,
+        }
+    }
 }
