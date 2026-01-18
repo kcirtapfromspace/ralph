@@ -53,7 +53,7 @@ pub use inventory::{
 #[allow(unused_imports)]
 pub use languages::{LanguageAnalyzer, LanguageDetector, LanguageInfo, LanguageSupport};
 #[allow(unused_imports)]
-pub use output::{JsonOutputError, JsonReportWriter};
+pub use output::{JsonOutputError, JsonReportWriter, MarkdownOutputError, MarkdownReportWriter};
 #[allow(unused_imports)]
 pub use patterns::{
     AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,

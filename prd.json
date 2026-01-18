@@ -220,7 +220,7 @@
       "description": "As a user, I want audit results in JSON format so tools can consume them programmatically.",
       "id": "US-013",
       "notes": "Use serde_json for serialization",
-      "passes": false,
+      "passes": true,
       "priority": 13,
       "title": "Implement JSON report output"
     },
