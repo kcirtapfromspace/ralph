@@ -154,6 +154,30 @@ impl ReconciliationEngine {
         issues
     }
 
+    /// Runs full reconciliation checking for all known issue types
+    ///
+    /// This method combines all individual checks (git conflicts, type errors)
+    /// and returns a comprehensive `ReconciliationResult`.
+    ///
+    /// # Returns
+    /// `ReconciliationResult::Clean` if no issues are found, or
+    /// `ReconciliationResult::IssuesFound` with a list of all detected issues.
+    pub fn reconcile(&self) -> ReconciliationResult {
+        let mut all_issues = Vec::new();
+
+        // Check for git conflicts
+        all_issues.extend(self.check_git_conflicts());
+
+        // Check for type errors
+        all_issues.extend(self.check_type_errors());
+
+        if all_issues.is_empty() {
+            ReconciliationResult::Clean
+        } else {
+            ReconciliationResult::IssuesFound(all_issues)
+        }
+    }
+
     /// Parses an error line from cargo check output
     ///
     /// # Arguments
@@ -292,5 +316,24 @@ mod tests {
         } else {
             panic!("Expected TypeMismatch variant");
         }
+    }
+
+    #[test]
+    fn test_reconcile_clean_project() {
+        // Use current directory which should be a clean project
+        let cwd = env::current_dir().expect("Failed to get current directory");
+        let engine = ReconciliationEngine::new(cwd);
+        let result = engine.reconcile();
+        // A clean project should return Clean
+        assert_eq!(result, ReconciliationResult::Clean);
+    }
+
+    #[test]
+    fn test_reconcile_non_rust_project() {
+        // Use /tmp which has no Cargo.toml
+        let engine = ReconciliationEngine::new(PathBuf::from("/tmp"));
+        let result = engine.reconcile();
+        // Should return Clean since there's nothing to check
+        assert_eq!(result, ReconciliationResult::Clean);
     }
 }

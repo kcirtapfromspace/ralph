@@ -571,7 +571,7 @@
       "description": "As a user, I want to verify code still compiles after parallel execution.",
       "id": "US-028",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 28,
       "targetFiles": [
         "src/parallel/reconcile.rs"

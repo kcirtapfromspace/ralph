@@ -114,6 +114,11 @@ impl DependencyGraph {
         self.id_to_node.get(id).copied()
     }
 
+    /// Looks up a story node by ID in O(1) time.
+    pub fn get_story(&self, id: &str) -> Option<&StoryNode> {
+        self.id_to_node.get(id).map(|&idx| &self.graph[idx])
+    }
+
     /// Returns the number of stories in the graph.
     pub fn node_count(&self) -> usize {
         self.graph.node_count()

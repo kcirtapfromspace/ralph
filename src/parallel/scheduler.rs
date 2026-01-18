@@ -9,6 +9,7 @@ use tokio::sync::{watch, Mutex, RwLock, Semaphore};
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::load_prd::{validate_prd, PrdFile};
 use crate::parallel::dependency::{DependencyGraph, StoryNode};
+use crate::parallel::reconcile::{ReconciliationEngine, ReconciliationIssue, ReconciliationResult};
 use crate::runner::{RunResult, RunnerConfig};
 
 /// Strategy for detecting conflicts between parallel story executions.
@@ -449,24 +450,257 @@ impl ParallelRunner {
                 handles.push(handle);
             }
 
-            // Wait for at least one task to complete
+            // Wait for all tasks in this batch to complete
             if !handles.is_empty() {
-                // Use select to wait for any task to complete
-                let (result, _index, remaining) = futures::future::select_all(handles).await;
+                let batch_story_ids: Vec<String> = {
+                    let state = self.execution_state.read().await;
+                    state.in_flight.iter().cloned().collect()
+                };
 
-                if let Ok((_story_id, _success, iterations)) = result {
+                // Wait for all handles to complete
+                let results = futures::future::join_all(handles).await;
+
+                for (_story_id, _success, iterations) in results.into_iter().flatten() {
                     total_iterations += iterations;
                 }
 
-                // Let remaining tasks continue (they'll complete in future iterations)
-                for handle in remaining {
-                    // Spawn a task to await the remaining handles
-                    tokio::spawn(async move {
-                        // Just await the handle to let it complete; state is already updated inside the task
-                        let _ = handle.await;
-                    });
+                // Run reconciliation after each batch completes
+                let reconciliation_result = self
+                    .run_reconciliation(&batch_story_ids, &graph, &agent, &mut total_iterations)
+                    .await;
+
+                // If reconciliation failed and we couldn't recover, return error
+                if let Some(error) = reconciliation_result {
+                    let state = self.execution_state.read().await;
+                    return RunResult {
+                        all_passed: false,
+                        stories_passed: state.completed.len(),
+                        total_stories,
+                        total_iterations,
+                        error: Some(error),
+                    };
                 }
             }
+        }
+    }
+
+    /// Runs reconciliation after a batch completes and handles any issues found.
+    ///
+    /// Returns `None` if reconciliation passed or issues were resolved via sequential retry.
+    /// Returns `Some(error)` if reconciliation found issues that couldn't be resolved.
+    async fn run_reconciliation(
+        &self,
+        batch_story_ids: &[String],
+        graph: &DependencyGraph,
+        agent: &str,
+        total_iterations: &mut u32,
+    ) -> Option<String> {
+        let engine = ReconciliationEngine::new(self.base_config.working_dir.clone());
+        let result = engine.reconcile();
+
+        match result {
+            ReconciliationResult::Clean => {
+                eprintln!("[parallel] Reconciliation: clean after batch");
+                None
+            }
+            ReconciliationResult::IssuesFound(issues) => {
+                // Log all issues found
+                for issue in &issues {
+                    match issue {
+                        ReconciliationIssue::GitConflict { affected_files } => {
+                            eprintln!(
+                                "[parallel] Reconciliation issue: git conflict in files: {}",
+                                affected_files.join(", ")
+                            );
+                        }
+                        ReconciliationIssue::TypeMismatch { file, error } => {
+                            eprintln!(
+                                "[parallel] Reconciliation issue: type error in {}: {}",
+                                file, error
+                            );
+                        }
+                        ReconciliationIssue::ImportDuplicate => {
+                            eprintln!("[parallel] Reconciliation issue: duplicate import detected");
+                        }
+                    }
+                }
+
+                // If fallback is enabled, retry affected stories sequentially
+                if self.config.fallback_to_sequential {
+                    eprintln!(
+                        "[parallel] Fallback enabled: retrying {} stories sequentially",
+                        batch_story_ids.len()
+                    );
+
+                    // Get affected stories - for now, we retry all stories from the batch
+                    // that have issues (based on file overlap with issue files)
+                    let affected_story_ids =
+                        self.get_affected_stories(&issues, batch_story_ids, graph);
+
+                    if !affected_story_ids.is_empty() {
+                        // Remove affected stories from completed set so they can be retried
+                        {
+                            let mut state = self.execution_state.write().await;
+                            for story_id in &affected_story_ids {
+                                state.completed.remove(story_id);
+                                state.failed.remove(story_id);
+                            }
+                        }
+
+                        // Retry affected stories sequentially
+                        for story_id in &affected_story_ids {
+                            eprintln!("[parallel] Sequential retry: executing story {}", story_id);
+
+                            let executor_config = ExecutorConfig {
+                                prd_path: self.base_config.prd_path.clone(),
+                                project_root: self.base_config.working_dir.clone(),
+                                progress_path: self.base_config.working_dir.join("progress.txt"),
+                                quality_profile: None,
+                                agent_command: agent.to_string(),
+                                max_iterations: self.base_config.max_iterations_per_story,
+                                git_mutex: Some(self.git_mutex.clone()),
+                            };
+
+                            let executor = StoryExecutor::new(executor_config);
+                            let (_cancel_tx, cancel_rx) = watch::channel(false);
+
+                            let result = executor
+                                .execute_story(story_id, cancel_rx, |_iter, _max| {})
+                                .await;
+
+                            match result {
+                                Ok(exec_result) if exec_result.success => {
+                                    let mut state = self.execution_state.write().await;
+                                    state.completed.insert(story_id.clone());
+                                    *total_iterations += exec_result.iterations_used;
+                                    eprintln!(
+                                        "[parallel] Sequential retry: story {} succeeded",
+                                        story_id
+                                    );
+                                }
+                                Ok(exec_result) => {
+                                    let mut state = self.execution_state.write().await;
+                                    let error_msg = exec_result
+                                        .error
+                                        .unwrap_or_else(|| "Unknown error".to_string());
+                                    state.failed.insert(story_id.clone(), error_msg.clone());
+                                    *total_iterations += exec_result.iterations_used;
+                                    eprintln!(
+                                        "[parallel] Sequential retry: story {} failed: {}",
+                                        story_id, error_msg
+                                    );
+                                }
+                                Err(e) => {
+                                    let mut state = self.execution_state.write().await;
+                                    state.failed.insert(story_id.clone(), e.to_string());
+                                    *total_iterations += 1;
+                                    eprintln!(
+                                        "[parallel] Sequential retry: story {} error: {}",
+                                        story_id, e
+                                    );
+                                }
+                            }
+                        }
+
+                        // Run reconciliation again after sequential retry
+                        let post_retry_result = engine.reconcile();
+                        match post_retry_result {
+                            ReconciliationResult::Clean => {
+                                eprintln!(
+                                    "[parallel] Reconciliation: clean after sequential retry"
+                                );
+                                None
+                            }
+                            ReconciliationResult::IssuesFound(remaining_issues) => {
+                                eprintln!(
+                                    "[parallel] Reconciliation: {} issues remain after sequential retry",
+                                    remaining_issues.len()
+                                );
+                                Some(format!(
+                                    "Reconciliation failed with {} issues after sequential retry",
+                                    remaining_issues.len()
+                                ))
+                            }
+                        }
+                    } else {
+                        // No affected stories identified, but issues exist
+                        Some(format!(
+                            "Reconciliation failed with {} issues",
+                            issues.len()
+                        ))
+                    }
+                } else {
+                    // Fallback disabled, return error
+                    Some(format!(
+                        "Reconciliation failed with {} issues (fallback disabled)",
+                        issues.len()
+                    ))
+                }
+            }
+        }
+    }
+
+    /// Identifies stories affected by reconciliation issues.
+    ///
+    /// Returns a list of story IDs that should be retried based on the issues found.
+    fn get_affected_stories(
+        &self,
+        issues: &[ReconciliationIssue],
+        batch_story_ids: &[String],
+        graph: &DependencyGraph,
+    ) -> Vec<String> {
+        // Collect all affected files from issues
+        let mut affected_files: HashSet<String> = HashSet::new();
+
+        for issue in issues {
+            match issue {
+                ReconciliationIssue::GitConflict {
+                    affected_files: files,
+                } => {
+                    affected_files.extend(files.iter().cloned());
+                }
+                ReconciliationIssue::TypeMismatch { file, .. } => {
+                    if file != "unknown" {
+                        affected_files.insert(file.clone());
+                    }
+                }
+                ReconciliationIssue::ImportDuplicate => {
+                    // For import duplicates, we can't easily determine which files are affected
+                    // So we mark all batch stories as affected
+                    return batch_story_ids.to_vec();
+                }
+            }
+        }
+
+        // If we couldn't identify specific files, retry all batch stories
+        if affected_files.is_empty() {
+            return batch_story_ids.to_vec();
+        }
+
+        // Find stories whose target_files overlap with affected files
+        let mut affected_story_ids = Vec::new();
+
+        for story_id in batch_story_ids {
+            if let Some(story) = graph.get_story(story_id) {
+                for target_file in &story.target_files {
+                    // Check if any affected file matches or is contained in target_file pattern
+                    for affected_file in &affected_files {
+                        if target_file.contains(affected_file)
+                            || affected_file.contains(target_file)
+                        {
+                            affected_story_ids.push(story_id.clone());
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        // If we still couldn't match any stories, retry all
+        if affected_story_ids.is_empty() {
+            batch_story_ids.to_vec()
+        } else {
+            affected_story_ids
         }
     }
 
