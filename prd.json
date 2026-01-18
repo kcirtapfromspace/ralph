@@ -187,7 +187,7 @@
       "description": "As a user, I want the audit to suggest complementary features so I know what could be added.",
       "id": "US-011",
       "notes": "Pattern matching based on what exists vs what could exist",
-      "passes": false,
+      "passes": true,
       "priority": 11,
       "title": "Implement opportunity detector"
     },

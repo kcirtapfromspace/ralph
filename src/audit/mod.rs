@@ -38,7 +38,7 @@ pub use dependencies::{
 pub use detectors::{
     ArchitectureGap, ArchitectureGapType, ArchitectureGapsAnalysis, ArchitectureGapsDetector,
     OpportunityAnalysis, OpportunityContext, OpportunityDetector, OpportunityPattern,
-    OpportunityType,
+    OpportunityType, TechDebtAnalysis, TechDebtDetector, TechDebtItem, TechDebtType,
 };
 #[allow(unused_imports)]
 pub use documentation::{
