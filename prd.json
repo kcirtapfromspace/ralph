@@ -195,7 +195,7 @@
       "description": "As a developer, I need glob pattern matching for targetFiles.",
       "id": "US-010",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 10,
       "targetFiles": [
         "Cargo.toml",
