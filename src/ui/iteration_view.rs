@@ -13,7 +13,7 @@ use std::time::{Duration, Instant};
 use owo_colors::OwoColorize;
 
 use crate::ui::colors::Theme;
-use crate::ui::ghostty::{self, TerminalCapabilities};
+use crate::ui::ghostty::{self, file_hyperlink_with_line, TerminalCapabilities};
 use crate::ui::spinner::spinner_chars;
 
 /// Preview of what will happen in an iteration.
@@ -187,6 +187,139 @@ impl GateProgressInfo {
 }
 
 // ============================================================================
+// Activity Indicator
+// ============================================================================
+
+/// Represents the current activity during a long-running operation.
+///
+/// Used to show what file or action is happening during quality gate execution.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ActivityIndicator {
+    /// The activity description (e.g., "Running:")
+    prefix: String,
+    /// The activity target (e.g., file path or action name)
+    target: String,
+    /// Optional line number for file-based activities
+    line_number: Option<u32>,
+}
+
+impl ActivityIndicator {
+    /// Create a new activity indicator.
+    ///
+    /// # Arguments
+    /// * `prefix` - The activity prefix (e.g., "Running:", "Testing:")
+    /// * `target` - The target of the activity (e.g., file path, test name)
+    pub fn new(prefix: impl Into<String>, target: impl Into<String>) -> Self {
+        Self {
+            prefix: prefix.into(),
+            target: target.into(),
+            line_number: None,
+        }
+    }
+
+    /// Create an activity indicator with a line number.
+    ///
+    /// Useful for showing file:line format like "src/tests/auth.rs:142"
+    pub fn with_line(prefix: impl Into<String>, target: impl Into<String>, line: u32) -> Self {
+        Self {
+            prefix: prefix.into(),
+            target: target.into(),
+            line_number: Some(line),
+        }
+    }
+
+    /// Create a "Running" activity indicator for a file.
+    pub fn running_file(path: impl Into<String>) -> Self {
+        Self::new("Running:", path)
+    }
+
+    /// Create a "Running" activity indicator for a file with line number.
+    pub fn running_file_at_line(path: impl Into<String>, line: u32) -> Self {
+        Self::with_line("Running:", path, line)
+    }
+
+    /// Create a "Testing" activity indicator.
+    pub fn testing(target: impl Into<String>) -> Self {
+        Self::new("Testing:", target)
+    }
+
+    /// Create a "Compiling" activity indicator.
+    pub fn compiling(target: impl Into<String>) -> Self {
+        Self::new("Compiling:", target)
+    }
+
+    /// Create a "Linting" activity indicator.
+    pub fn linting(target: impl Into<String>) -> Self {
+        Self::new("Linting:", target)
+    }
+
+    /// Get the prefix.
+    pub fn prefix(&self) -> &str {
+        &self.prefix
+    }
+
+    /// Get the target.
+    pub fn target(&self) -> &str {
+        &self.target
+    }
+
+    /// Get the line number if set.
+    pub fn line_number(&self) -> Option<u32> {
+        self.line_number
+    }
+
+    /// Check if this is a file-based activity (has a path-like target).
+    pub fn is_file_activity(&self) -> bool {
+        // Simple heuristic: contains path separator or common file extensions
+        self.target.contains('/')
+            || self.target.contains('\\')
+            || self.target.ends_with(".rs")
+            || self.target.ends_with(".ts")
+            || self.target.ends_with(".js")
+            || self.target.ends_with(".py")
+    }
+
+    /// Render the activity indicator as a string.
+    ///
+    /// # Arguments
+    /// * `theme` - Color theme for rendering
+    /// * `capabilities` - Terminal capabilities for hyperlink support
+    pub fn render(&self, theme: &Theme, capabilities: &TerminalCapabilities) -> String {
+        let target_display = if let Some(line) = self.line_number {
+            // File with line number - make it a clickable hyperlink if supported
+            file_hyperlink_with_line(&self.target, line, None, capabilities)
+        } else if self.is_file_activity() {
+            // Just a file path without line number
+            crate::ui::ghostty::file_hyperlink(&self.target, None, capabilities)
+        } else {
+            // Not a file, just use the target as-is
+            self.target.clone()
+        };
+
+        format!(
+            "{} {}",
+            self.prefix.color(theme.muted),
+            target_display.color(theme.in_progress)
+        )
+    }
+
+    /// Render the activity indicator without hyperlinks (plain text).
+    pub fn render_plain(&self, theme: &Theme) -> String {
+        let target_display = if let Some(line) = self.line_number {
+            format!("{}:{}", self.target, line)
+        } else {
+            self.target.clone()
+        };
+
+        format!(
+            "{} {}",
+            self.prefix.color(theme.muted),
+            target_display.color(theme.in_progress)
+        )
+    }
+}
+
+// ============================================================================
 // Live Iteration Panel
 // ============================================================================
 
@@ -214,6 +347,8 @@ pub struct LiveIterationPanel {
     capabilities: TerminalCapabilities,
     /// Number of lines rendered (for clearing)
     rendered_lines: usize,
+    /// Current activity indicator (shown beneath running gate)
+    activity: Option<ActivityIndicator>,
 }
 
 impl LiveIterationPanel {
@@ -237,6 +372,7 @@ impl LiveIterationPanel {
             theme: Theme::default(),
             capabilities: TerminalCapabilities::detect(),
             rendered_lines: 0,
+            activity: None,
         }
     }
 
@@ -291,17 +427,46 @@ impl LiveIterationPanel {
     }
 
     /// Mark a gate as passed.
+    ///
+    /// Also clears the current activity indicator since the gate has completed.
     pub fn pass_gate(&mut self, name: &str, duration: Duration) {
         if let Some(&idx) = self.gate_indices.get(name) {
             self.gates[idx].pass(duration);
+            self.clear_activity();
         }
     }
 
     /// Mark a gate as failed.
+    ///
+    /// Also clears the current activity indicator since the gate has completed.
     pub fn fail_gate(&mut self, name: &str, duration: Duration) {
         if let Some(&idx) = self.gate_indices.get(name) {
             self.gates[idx].fail(duration);
+            self.clear_activity();
         }
+    }
+
+    /// Set the current activity indicator.
+    ///
+    /// Shows what file or action is happening during a long-running gate.
+    /// Displayed beneath the running gate in the UI.
+    ///
+    /// # Arguments
+    /// * `activity` - The activity indicator to display
+    pub fn set_activity(&mut self, activity: ActivityIndicator) {
+        self.activity = Some(activity);
+    }
+
+    /// Clear the current activity indicator.
+    ///
+    /// Called automatically when a gate passes or fails.
+    pub fn clear_activity(&mut self) {
+        self.activity = None;
+    }
+
+    /// Get the current activity indicator if set.
+    pub fn activity(&self) -> Option<&ActivityIndicator> {
+        self.activity.as_ref()
     }
 
     /// Get the current spinner character for animation.
@@ -364,6 +529,16 @@ impl LiveIterationPanel {
         // Gate progress lines
         for gate in &self.gates {
             output.push_str(&format!("  {}\n", self.render_gate(gate)));
+
+            // Show activity beneath running gate
+            if gate.progress == GateProgress::Running {
+                if let Some(ref activity) = self.activity {
+                    output.push_str(&format!(
+                        "    {}\n",
+                        activity.render(&self.theme, &self.capabilities)
+                    ));
+                }
+            }
         }
 
         output
@@ -1401,5 +1576,220 @@ mod tests {
         assert!(output.contains("2"));
         assert!(output.contains("3"));
         assert!(output.contains("iterations passed"));
+    }
+
+    // ========================================================================
+    // ActivityIndicator Tests
+    // ========================================================================
+
+    #[test]
+    fn test_activity_indicator_new() {
+        let activity = ActivityIndicator::new("Running:", "src/main.rs");
+        assert_eq!(activity.prefix(), "Running:");
+        assert_eq!(activity.target(), "src/main.rs");
+        assert!(activity.line_number().is_none());
+    }
+
+    #[test]
+    fn test_activity_indicator_with_line() {
+        let activity = ActivityIndicator::with_line("Running:", "src/tests/auth.rs", 142);
+        assert_eq!(activity.prefix(), "Running:");
+        assert_eq!(activity.target(), "src/tests/auth.rs");
+        assert_eq!(activity.line_number(), Some(142));
+    }
+
+    #[test]
+    fn test_activity_indicator_running_file() {
+        let activity = ActivityIndicator::running_file("src/lib.rs");
+        assert_eq!(activity.prefix(), "Running:");
+        assert_eq!(activity.target(), "src/lib.rs");
+    }
+
+    #[test]
+    fn test_activity_indicator_running_file_at_line() {
+        let activity = ActivityIndicator::running_file_at_line("src/lib.rs", 42);
+        assert_eq!(activity.prefix(), "Running:");
+        assert_eq!(activity.target(), "src/lib.rs");
+        assert_eq!(activity.line_number(), Some(42));
+    }
+
+    #[test]
+    fn test_activity_indicator_testing() {
+        let activity = ActivityIndicator::testing("test_something");
+        assert_eq!(activity.prefix(), "Testing:");
+        assert_eq!(activity.target(), "test_something");
+    }
+
+    #[test]
+    fn test_activity_indicator_compiling() {
+        let activity = ActivityIndicator::compiling("my_crate");
+        assert_eq!(activity.prefix(), "Compiling:");
+        assert_eq!(activity.target(), "my_crate");
+    }
+
+    #[test]
+    fn test_activity_indicator_linting() {
+        let activity = ActivityIndicator::linting("src/main.rs");
+        assert_eq!(activity.prefix(), "Linting:");
+        assert_eq!(activity.target(), "src/main.rs");
+    }
+
+    #[test]
+    fn test_activity_indicator_is_file_activity() {
+        assert!(ActivityIndicator::new("Running:", "src/main.rs").is_file_activity());
+        assert!(ActivityIndicator::new("Running:", "tests/test.rs").is_file_activity());
+        assert!(ActivityIndicator::new("Running:", "/absolute/path.rs").is_file_activity());
+        assert!(ActivityIndicator::new("Running:", "file.ts").is_file_activity());
+        assert!(ActivityIndicator::new("Running:", "file.js").is_file_activity());
+        assert!(ActivityIndicator::new("Running:", "file.py").is_file_activity());
+        assert!(!ActivityIndicator::new("Running:", "my_crate").is_file_activity());
+        assert!(!ActivityIndicator::new("Running:", "test_something").is_file_activity());
+    }
+
+    #[test]
+    fn test_activity_indicator_render_plain_without_line() {
+        let activity = ActivityIndicator::new("Running:", "src/main.rs");
+        let theme = Theme::default();
+        let output = activity.render_plain(&theme);
+        assert!(output.contains("Running:"));
+        assert!(output.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn test_activity_indicator_render_plain_with_line() {
+        let activity = ActivityIndicator::with_line("Running:", "src/tests/auth.rs", 142);
+        let theme = Theme::default();
+        let output = activity.render_plain(&theme);
+        assert!(output.contains("Running:"));
+        assert!(output.contains("src/tests/auth.rs:142"));
+    }
+
+    #[test]
+    fn test_activity_indicator_render_with_hyperlinks() {
+        let activity = ActivityIndicator::with_line("Running:", "src/tests/auth.rs", 142);
+        let theme = Theme::default();
+        let caps = TerminalCapabilities::all_enabled();
+        let output = activity.render(&theme, &caps);
+        assert!(output.contains("Running:"));
+        // Should have hyperlink escape codes
+        assert!(output.contains("\x1b]8;;"));
+    }
+
+    #[test]
+    fn test_activity_indicator_render_without_hyperlinks() {
+        let activity = ActivityIndicator::with_line("Running:", "src/tests/auth.rs", 142);
+        let theme = Theme::default();
+        let caps = TerminalCapabilities::minimal();
+        let output = activity.render(&theme, &caps);
+        assert!(output.contains("Running:"));
+        // Should not have hyperlink escape codes
+        assert!(!output.contains("\x1b]8;;"));
+    }
+
+    #[test]
+    fn test_activity_indicator_equality() {
+        let a1 = ActivityIndicator::new("Running:", "src/main.rs");
+        let a2 = ActivityIndicator::new("Running:", "src/main.rs");
+        let a3 = ActivityIndicator::new("Testing:", "src/main.rs");
+        assert_eq!(a1, a2);
+        assert_ne!(a1, a3);
+    }
+
+    // ========================================================================
+    // LiveIterationPanel Activity Tests
+    // ========================================================================
+
+    #[test]
+    fn test_live_iteration_panel_set_activity() {
+        let gates = vec!["build".to_string()];
+        let mut panel = LiveIterationPanel::new(1, 1, gates);
+
+        assert!(panel.activity().is_none());
+
+        let activity = ActivityIndicator::running_file("src/main.rs");
+        panel.set_activity(activity.clone());
+
+        assert!(panel.activity().is_some());
+        assert_eq!(panel.activity().unwrap().target(), "src/main.rs");
+    }
+
+    #[test]
+    fn test_live_iteration_panel_clear_activity() {
+        let gates = vec!["build".to_string()];
+        let mut panel = LiveIterationPanel::new(1, 1, gates);
+
+        let activity = ActivityIndicator::running_file("src/main.rs");
+        panel.set_activity(activity);
+        assert!(panel.activity().is_some());
+
+        panel.clear_activity();
+        assert!(panel.activity().is_none());
+    }
+
+    #[test]
+    fn test_live_iteration_panel_pass_gate_clears_activity() {
+        let gates = vec!["build".to_string()];
+        let mut panel = LiveIterationPanel::new(1, 1, gates);
+
+        panel.start_gate("build");
+        panel.set_activity(ActivityIndicator::running_file("src/main.rs"));
+        assert!(panel.activity().is_some());
+
+        panel.pass_gate("build", Duration::from_secs(1));
+        assert!(panel.activity().is_none());
+    }
+
+    #[test]
+    fn test_live_iteration_panel_fail_gate_clears_activity() {
+        let gates = vec!["build".to_string()];
+        let mut panel = LiveIterationPanel::new(1, 1, gates);
+
+        panel.start_gate("build");
+        panel.set_activity(ActivityIndicator::running_file("src/main.rs"));
+        assert!(panel.activity().is_some());
+
+        panel.fail_gate("build", Duration::from_secs(1));
+        assert!(panel.activity().is_none());
+    }
+
+    #[test]
+    fn test_live_iteration_panel_render_with_activity() {
+        let gates = vec!["build".to_string(), "lint".to_string()];
+        let mut panel = LiveIterationPanel::with_capabilities(
+            1,
+            3,
+            gates,
+            TerminalCapabilities::minimal(),
+        );
+
+        panel.start_gate("build");
+        panel.set_activity(ActivityIndicator::running_file_at_line("src/tests/auth.rs", 142));
+
+        let output = panel.render();
+
+        // Should contain the activity beneath the running gate
+        assert!(output.contains("build"));
+        assert!(output.contains("Running:"));
+        assert!(output.contains("src/tests/auth.rs"));
+    }
+
+    #[test]
+    fn test_live_iteration_panel_render_no_activity_when_not_running() {
+        let gates = vec!["build".to_string()];
+        let mut panel = LiveIterationPanel::with_capabilities(
+            1,
+            1,
+            gates,
+            TerminalCapabilities::minimal(),
+        );
+
+        // Set activity but don't start the gate (should not show)
+        panel.set_activity(ActivityIndicator::running_file("src/main.rs"));
+
+        let output = panel.render();
+
+        // Activity should not appear since no gate is running
+        assert!(output.contains("build"));
+        assert!(!output.contains("Running:"));
     }
 }

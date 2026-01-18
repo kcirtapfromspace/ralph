@@ -29,8 +29,8 @@ pub use interrupt::{
     is_globally_interrupted, render_interrupt_panel, reset_global_interrupt, InterruptHandler,
 };
 pub use iteration_view::{
-    GateProgress, GateProgressInfo, GateSummary, IterationPreview, IterationSummary,
-    IterationSummaryStack, LiveIterationPanel,
+    ActivityIndicator, GateProgress, GateProgressInfo, GateSummary, IterationPreview,
+    IterationSummary, IterationSummaryStack, LiveIterationPanel,
 };
 pub use quality_gates::{GateStatus, QualityGateRenderer, QualityGateView};
 pub use spinner::{
