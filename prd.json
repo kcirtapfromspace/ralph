@@ -178,7 +178,7 @@
       "description": "As a scheduler, I need to know which stories can execute now.",
       "id": "US-009",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 9,
       "targetFiles": [
         "src/parallel/dependency.rs"
