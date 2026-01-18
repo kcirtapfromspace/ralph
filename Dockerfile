@@ -2,6 +2,19 @@
 
 # Ralph MCP Server - Multi-stage build for minimal image size
 # This Dockerfile builds the Ralph MCP server for use with Docker MCP toolkit
+#
+# Build Arguments:
+#   VERSION     - Semantic version for the build (e.g., "1.0.0")
+#   COMMIT_SHA  - Git commit SHA for traceability
+#
+# Usage:
+#   docker build --build-arg VERSION=1.0.0 --build-arg COMMIT_SHA=$(git rev-parse HEAD) -t ralph .
+#
+# These build args are embedded as labels for version tracking and debugging.
+
+# Build arguments for version tracking
+ARG VERSION=dev
+ARG COMMIT_SHA=unknown
 
 # Stage 1: Build the Rust binary
 FROM rust:1.75-slim-bookworm AS builder
@@ -40,6 +53,10 @@ RUN cargo build --release --bin ralph
 # Stage 2: Create minimal runtime image
 FROM debian:bookworm-slim AS runtime
 
+# Re-declare build args in runtime stage (required for multi-stage builds)
+ARG VERSION
+ARG COMMIT_SHA
+
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     ca-certificates \
@@ -68,10 +85,12 @@ ENTRYPOINT ["ralph", "mcp-server"]
 # Default: no PRD preloaded (can be overridden with --prd flag)
 CMD []
 
-# Labels for Docker MCP toolkit compatibility
+# Labels for Docker MCP toolkit compatibility and version tracking
 LABEL org.opencontainers.image.title="Ralph MCP Server"
 LABEL org.opencontainers.image.description="Enterprise-ready autonomous AI agent framework with MCP server"
 LABEL org.opencontainers.image.vendor="kcirtapfromspace"
 LABEL org.opencontainers.image.source="https://github.com/kcirtapfromspace/ralph"
+LABEL org.opencontainers.image.version="${VERSION}"
+LABEL org.opencontainers.image.revision="${COMMIT_SHA}"
 LABEL mcp.server="true"
 LABEL mcp.transport="stdio"
