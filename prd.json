@@ -273,7 +273,7 @@
       "description": "As a user, I want to run ralph audit from the command line so I can audit any codebase.",
       "id": "US-016",
       "notes": "Follow existing Commands pattern in main.rs",
-      "passes": false,
+      "passes": true,
       "priority": 16,
       "title": "Add audit CLI subcommand"
     },

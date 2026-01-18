@@ -15,6 +15,7 @@ pub mod architecture;
 pub mod dependencies;
 pub mod detectors;
 pub mod documentation;
+pub mod interactive;
 pub mod inventory;
 pub mod languages;
 pub mod output;
@@ -45,6 +46,11 @@ pub use detectors::{
 pub use documentation::{
     DocAnalyzer, DocGap, DocGapType, DocSeverity, DocumentationAnalysis, ReadmeAnalysis,
     UndocumentedItem,
+};
+#[allow(unused_imports)]
+pub use interactive::{
+    InteractiveConfig, InteractiveSession, ProjectPriority, ProjectPurpose, ProjectStage, Question,
+    QuestionOption, TargetUsers, UserAnswers,
 };
 #[allow(unused_imports)]
 pub use inventory::{
