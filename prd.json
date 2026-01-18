@@ -655,7 +655,7 @@
       "description": "As a developer, I need an end-to-end test of parallel execution.",
       "id": "US-032",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 32,
       "targetFiles": [
         "tests/integration/parallel_execution.rs"
