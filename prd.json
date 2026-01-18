@@ -218,7 +218,7 @@
       "description": "As a user, I want dependencies auto-inferred from targetFiles overlap.",
       "id": "US-011",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 11,
       "targetFiles": [
         "src/parallel/inference.rs"

@@ -1,6 +1,7 @@
 //! Dependency graph construction and analysis
 
 use crate::mcp::tools::load_prd::PrdUserStory;
+use crate::parallel::inference::infer_from_files;
 use petgraph::algo::{is_cyclic_directed, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
@@ -236,6 +237,50 @@ impl DependencyGraph {
 
         cycle_ids.sort();
         cycle_ids
+    }
+
+    /// Infers dependencies from target file overlaps and adds them to the graph.
+    ///
+    /// This method analyzes the `target_files` patterns of all stories in the graph
+    /// and adds edges for stories that have overlapping patterns. Higher-priority
+    /// stories (lower priority number) become dependencies of lower-priority stories.
+    ///
+    /// Explicit `dependsOn` relationships take precedence - this method will not
+    /// duplicate edges that already exist in the graph.
+    pub fn infer_dependencies(&mut self) {
+        // Collect all story nodes for inference
+        let stories: Vec<StoryNode> = self
+            .graph
+            .node_indices()
+            .map(|idx| self.graph[idx].clone())
+            .collect();
+
+        // Get inferred dependencies
+        let inferred = infer_from_files(&stories);
+
+        // Add edges for inferred dependencies, avoiding duplicates
+        for (dependent_id, dependency_id) in inferred {
+            if let (Some(&dependent_idx), Some(&dependency_idx)) = (
+                self.id_to_node.get(&dependent_id),
+                self.id_to_node.get(&dependency_id),
+            ) {
+                // Check if edge already exists (explicit dependsOn takes precedence)
+                let edge_exists = self
+                    .graph
+                    .edges(dependent_idx)
+                    .any(|e| e.target() == dependency_idx);
+
+                if !edge_exists {
+                    self.graph.add_edge(dependent_idx, dependency_idx, ());
+                    // Also update the node's depends_on list for consistency
+                    if let Some(node) = self.graph.node_weight_mut(dependent_idx) {
+                        if !node.depends_on.contains(&dependency_id) {
+                            node.depends_on.push(dependency_id);
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -517,5 +562,104 @@ mod tests {
         completed.insert("US-005".to_string());
         let ready = graph.get_ready_stories(&completed);
         assert!(ready.is_empty());
+    }
+
+    /// Helper function to create a test story with target files
+    fn make_story_with_files(
+        id: &str,
+        priority: u32,
+        depends_on: Vec<&str>,
+        target_files: Vec<&str>,
+    ) -> PrdUserStory {
+        PrdUserStory {
+            id: id.to_string(),
+            title: format!("Story {}", id),
+            description: String::new(),
+            acceptance_criteria: vec![],
+            priority,
+            passes: false,
+            depends_on: depends_on.into_iter().map(String::from).collect(),
+            target_files: target_files.into_iter().map(String::from).collect(),
+        }
+    }
+
+    #[test]
+    fn test_infer_dependencies_adds_edges_correctly() {
+        // Create stories with overlapping target files but no explicit dependencies
+        // US-001 (priority 1): targets src/lib.rs
+        // US-002 (priority 2): targets src/lib.rs (overlaps with US-001)
+        // US-003 (priority 3): targets tests/test.rs (no overlap)
+        let stories = vec![
+            make_story_with_files("US-001", 1, vec![], vec!["src/lib.rs"]),
+            make_story_with_files("US-002", 2, vec![], vec!["src/lib.rs"]),
+            make_story_with_files("US-003", 3, vec![], vec!["tests/test.rs"]),
+        ];
+
+        let mut graph = DependencyGraph::from_stories(&stories);
+
+        // Before inference: no edges
+        assert_eq!(graph.edge_count(), 0, "Should have no edges initially");
+
+        // Infer dependencies
+        graph.infer_dependencies();
+
+        // After inference: US-002 should depend on US-001 due to overlapping target files
+        assert_eq!(
+            graph.edge_count(),
+            1,
+            "Should have one inferred edge from US-002 to US-001"
+        );
+
+        // Verify the edge is correct: US-002 -> US-001 (US-002 depends on US-001)
+        let us002_idx = graph.get_node_index("US-002").unwrap();
+        let us001_idx = graph.get_node_index("US-001").unwrap();
+        let has_edge = graph
+            .graph()
+            .edges(us002_idx)
+            .any(|e| e.target() == us001_idx);
+        assert!(
+            has_edge,
+            "US-002 should have an edge to US-001 (dependency)"
+        );
+
+        // Verify the node's depends_on was updated
+        let us002_node = &graph.graph()[us002_idx];
+        assert!(
+            us002_node.depends_on.contains(&"US-001".to_string()),
+            "US-002's depends_on should include US-001"
+        );
+
+        // US-003 should have no dependencies (no overlap with others)
+        let us003_idx = graph.get_node_index("US-003").unwrap();
+        let us003_edges: Vec<_> = graph.graph().edges(us003_idx).collect();
+        assert!(
+            us003_edges.is_empty(),
+            "US-003 should have no dependency edges"
+        );
+    }
+
+    #[test]
+    fn test_infer_dependencies_does_not_duplicate_explicit_edges() {
+        // Create stories where US-002 already explicitly depends on US-001
+        // and they also have overlapping target files
+        let stories = vec![
+            make_story_with_files("US-001", 1, vec![], vec!["src/lib.rs"]),
+            make_story_with_files("US-002", 2, vec!["US-001"], vec!["src/lib.rs"]),
+        ];
+
+        let mut graph = DependencyGraph::from_stories(&stories);
+
+        // Before inference: one explicit edge (US-002 -> US-001)
+        assert_eq!(graph.edge_count(), 1, "Should have one explicit edge");
+
+        // Infer dependencies
+        graph.infer_dependencies();
+
+        // After inference: still only one edge (no duplicate added)
+        assert_eq!(
+            graph.edge_count(),
+            1,
+            "Should still have only one edge (no duplicate)"
+        );
     }
 }
