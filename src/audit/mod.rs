@@ -17,6 +17,7 @@ pub mod detectors;
 pub mod documentation;
 pub mod inventory;
 pub mod languages;
+pub mod output;
 pub mod patterns;
 pub mod testing;
 
@@ -51,6 +52,8 @@ pub use inventory::{
 };
 #[allow(unused_imports)]
 pub use languages::{LanguageAnalyzer, LanguageDetector, LanguageInfo, LanguageSupport};
+#[allow(unused_imports)]
+pub use output::{JsonOutputError, JsonReportWriter};
 #[allow(unused_imports)]
 pub use patterns::{
     AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,

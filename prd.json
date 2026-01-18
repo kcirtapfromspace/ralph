@@ -204,7 +204,7 @@
       "description": "As a user, I want the audit to find technical debt so I can prioritize cleanup.",
       "id": "US-012",
       "notes": "Use regex to find TODO comments, compare dep versions",
-      "passes": false,
+      "passes": true,
       "priority": 12,
       "title": "Implement technical debt detector"
     },
