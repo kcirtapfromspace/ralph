@@ -45,16 +45,19 @@ RUN cargo chef prepare --recipe-path recipe.json
 # Stage 3: Build dependencies (cached layer)
 FROM chef AS builder
 
-# Install build dependencies and sccache (US-002)
+# Install build dependencies
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     git \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install sccache for compiler-level caching
-RUN cargo install sccache
-ENV RUSTC_WRAPPER=/usr/local/cargo/bin/sccache
+# Install pre-built sccache binary (US-002) - much faster than cargo install
+ARG SCCACHE_VERSION=v0.8.2
+RUN curl -fsSL "https://github.com/mozilla/sccache/releases/download/${SCCACHE_VERSION}/sccache-${SCCACHE_VERSION}-x86_64-unknown-linux-musl.tar.gz" \
+    | tar -xz -C /usr/local/bin --strip-components=1 --wildcards '*/sccache'
+ENV RUSTC_WRAPPER=/usr/local/bin/sccache
 ENV SCCACHE_DIR=/sccache
 
 # Copy the dependency recipe from planner
