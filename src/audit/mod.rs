@@ -13,6 +13,7 @@
 pub mod dependencies;
 pub mod inventory;
 pub mod languages;
+pub mod patterns;
 
 // Re-exports for convenience
 #[allow(unused_imports)]
@@ -25,6 +26,11 @@ pub use inventory::{
 };
 #[allow(unused_imports)]
 pub use languages::{LanguageAnalyzer, LanguageDetector, LanguageInfo, LanguageSupport};
+#[allow(unused_imports)]
+pub use patterns::{
+    AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,
+    PatternAnalysis, PatternAnalyzer,
+};
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
