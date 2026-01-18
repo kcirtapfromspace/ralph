@@ -68,7 +68,7 @@
       "description": "As a CI system, I want to cross-compile for both architectures natively instead of using slow QEMU emulation.",
       "id": "US-004",
       "notes": "Eliminates QEMU emulation which causes 40x slowdown",
-      "passes": false,
+      "passes": true,
       "priority": 4,
       "title": "Implement cross-compilation with cargo-zigbuild"
     },
