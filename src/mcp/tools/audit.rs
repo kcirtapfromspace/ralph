@@ -253,6 +253,110 @@ pub enum GetAuditResultsError {
     AuditFailed(String, String),
 }
 
+/// A user answer for the interactive Q&A session.
+#[derive(Debug, Clone, Deserialize, Serialize, JsonSchema)]
+pub struct UserAnswer {
+    /// The question ID that was answered
+    #[schemars(description = "The question ID that was answered")]
+    pub question_id: String,
+    /// The selected answer option
+    #[schemars(description = "The selected answer option")]
+    pub answer: String,
+}
+
+/// Request parameters for the generate_prd_from_audit tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct GeneratePrdFromAuditRequest {
+    /// The audit ID to generate PRD from.
+    #[schemars(description = "The audit ID returned from start_audit")]
+    pub audit_id: String,
+
+    /// Optional user answers from the interactive Q&A session.
+    /// If not provided, defaults are used.
+    #[schemars(description = "Optional user answers from Q&A session")]
+    #[serde(default)]
+    pub user_answers: Option<Vec<UserAnswer>>,
+
+    /// Optional project name override.
+    /// If not provided, derived from the audit path.
+    #[schemars(description = "Optional project name override")]
+    #[serde(default)]
+    pub project_name: Option<String>,
+
+    /// Optional output directory for generated files.
+    /// If not provided, uses current directory.
+    #[schemars(description = "Optional output directory for generated files")]
+    #[serde(default)]
+    pub output_dir: Option<String>,
+}
+
+/// Response from the generate_prd_from_audit tool.
+#[derive(Debug, Serialize)]
+pub struct GeneratePrdFromAuditResponse {
+    /// Whether the generation was successful
+    pub success: bool,
+
+    /// The audit ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audit_id: Option<String>,
+
+    /// Path to the generated PRD markdown file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prd_markdown_path: Option<String>,
+
+    /// Path to the generated prd.json file
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prd_json_path: Option<String>,
+
+    /// Number of user stories generated
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub story_count: Option<usize>,
+
+    /// Error message if failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+
+    /// Message describing the result
+    pub message: String,
+}
+
+/// Error types for generate_prd_from_audit operations.
+#[derive(Debug)]
+pub enum GeneratePrdFromAuditError {
+    /// Audit ID not found
+    AuditNotFound(String),
+    /// Audit is not yet complete
+    AuditNotComplete(String, AuditStatus),
+    /// Audit failed
+    AuditFailed(String, String),
+    /// PRD generation failed
+    GenerationFailed(String),
+    /// PRD conversion failed
+    ConversionFailed(String),
+}
+
+impl std::fmt::Display for GeneratePrdFromAuditError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GeneratePrdFromAuditError::AuditNotFound(id) => {
+                write!(f, "Audit not found: {}", id)
+            }
+            GeneratePrdFromAuditError::AuditNotComplete(id, status) => {
+                write!(f, "Audit '{}' is not complete (status: {})", id, status)
+            }
+            GeneratePrdFromAuditError::AuditFailed(id, error) => {
+                write!(f, "Audit '{}' failed: {}", id, error)
+            }
+            GeneratePrdFromAuditError::GenerationFailed(msg) => {
+                write!(f, "PRD generation failed: {}", msg)
+            }
+            GeneratePrdFromAuditError::ConversionFailed(msg) => {
+                write!(f, "PRD conversion failed: {}", msg)
+            }
+        }
+    }
+}
+
 impl std::fmt::Display for GetAuditResultsError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -497,6 +601,42 @@ pub fn create_results_error_response(error: &GetAuditResultsError) -> GetAuditRe
         success: false,
         audit_id: None,
         report: None,
+        error: Some(error.to_string()),
+        message: error.to_string(),
+    }
+}
+
+/// Create a success response for generate_prd_from_audit.
+pub fn create_generate_prd_success_response(
+    audit_id: &str,
+    prd_markdown_path: &std::path::Path,
+    prd_json_path: &std::path::Path,
+    story_count: usize,
+) -> GeneratePrdFromAuditResponse {
+    GeneratePrdFromAuditResponse {
+        success: true,
+        audit_id: Some(audit_id.to_string()),
+        prd_markdown_path: Some(prd_markdown_path.display().to_string()),
+        prd_json_path: Some(prd_json_path.display().to_string()),
+        story_count: Some(story_count),
+        error: None,
+        message: format!(
+            "PRD generated successfully from audit '{}'. {} user stories created.",
+            audit_id, story_count
+        ),
+    }
+}
+
+/// Create an error response for generate_prd_from_audit.
+pub fn create_generate_prd_error_response(
+    error: &GeneratePrdFromAuditError,
+) -> GeneratePrdFromAuditResponse {
+    GeneratePrdFromAuditResponse {
+        success: false,
+        audit_id: None,
+        prd_markdown_path: None,
+        prd_json_path: None,
+        story_count: None,
         error: Some(error.to_string()),
         message: error.to_string(),
     }
@@ -1083,5 +1223,178 @@ mod tests {
             state.report.as_ref().unwrap().metadata.project_root,
             PathBuf::from("/test")
         );
+    }
+
+    #[test]
+    fn test_user_answer_serialization() {
+        let answer = UserAnswer {
+            question_id: "Q1".to_string(),
+            answer: "A".to_string(),
+        };
+
+        let json = serde_json::to_string(&answer).unwrap();
+        assert!(json.contains("\"question_id\":\"Q1\""));
+        assert!(json.contains("\"answer\":\"A\""));
+    }
+
+    #[test]
+    fn test_user_answer_deserialization() {
+        let json = r#"{"question_id": "Q2", "answer": "B"}"#;
+        let answer: UserAnswer = serde_json::from_str(json).unwrap();
+
+        assert_eq!(answer.question_id, "Q2");
+        assert_eq!(answer.answer, "B");
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_request_deserialization() {
+        let json = r#"{"audit_id": "audit-123-456"}"#;
+        let req: GeneratePrdFromAuditRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(req.audit_id, "audit-123-456");
+        assert!(req.user_answers.is_none());
+        assert!(req.project_name.is_none());
+        assert!(req.output_dir.is_none());
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_request_with_options() {
+        let json = r#"{
+            "audit_id": "audit-123",
+            "user_answers": [{"question_id": "Q1", "answer": "A"}],
+            "project_name": "MyProject",
+            "output_dir": "/output"
+        }"#;
+        let req: GeneratePrdFromAuditRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(req.audit_id, "audit-123");
+        assert!(req.user_answers.is_some());
+        assert_eq!(req.user_answers.as_ref().unwrap().len(), 1);
+        assert_eq!(req.project_name, Some("MyProject".to_string()));
+        assert_eq!(req.output_dir, Some("/output".to_string()));
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_error_display_not_found() {
+        let error = GeneratePrdFromAuditError::AuditNotFound("audit-123".to_string());
+        assert!(error.to_string().contains("Audit not found"));
+        assert!(error.to_string().contains("audit-123"));
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_error_display_not_complete() {
+        let error = GeneratePrdFromAuditError::AuditNotComplete(
+            "audit-123".to_string(),
+            AuditStatus::Running,
+        );
+        assert!(error.to_string().contains("not complete"));
+        assert!(error.to_string().contains("audit-123"));
+        assert!(error.to_string().contains("running"));
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_error_display_failed() {
+        let error = GeneratePrdFromAuditError::AuditFailed(
+            "audit-123".to_string(),
+            "Test error".to_string(),
+        );
+        assert!(error.to_string().contains("failed"));
+        assert!(error.to_string().contains("audit-123"));
+        assert!(error.to_string().contains("Test error"));
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_error_display_generation_failed() {
+        let error = GeneratePrdFromAuditError::GenerationFailed("IO error".to_string());
+        assert!(error.to_string().contains("PRD generation failed"));
+        assert!(error.to_string().contains("IO error"));
+    }
+
+    #[test]
+    fn test_generate_prd_from_audit_error_display_conversion_failed() {
+        let error = GeneratePrdFromAuditError::ConversionFailed("Parse error".to_string());
+        assert!(error.to_string().contains("PRD conversion failed"));
+        assert!(error.to_string().contains("Parse error"));
+    }
+
+    #[test]
+    fn test_create_generate_prd_success_response() {
+        let prd_markdown_path = PathBuf::from("/output/prd.md");
+        let prd_json_path = PathBuf::from("/output/prd.json");
+
+        let response = create_generate_prd_success_response(
+            "audit-123",
+            &prd_markdown_path,
+            &prd_json_path,
+            5,
+        );
+
+        assert!(response.success);
+        assert_eq!(response.audit_id, Some("audit-123".to_string()));
+        assert_eq!(
+            response.prd_markdown_path,
+            Some("/output/prd.md".to_string())
+        );
+        assert_eq!(response.prd_json_path, Some("/output/prd.json".to_string()));
+        assert_eq!(response.story_count, Some(5));
+        assert!(response.error.is_none());
+        assert!(response.message.contains("audit-123"));
+        assert!(response.message.contains("5 user stories"));
+    }
+
+    #[test]
+    fn test_create_generate_prd_error_response() {
+        let error = GeneratePrdFromAuditError::AuditNotFound("audit-999".to_string());
+        let response = create_generate_prd_error_response(&error);
+
+        assert!(!response.success);
+        assert!(response.audit_id.is_none());
+        assert!(response.prd_markdown_path.is_none());
+        assert!(response.prd_json_path.is_none());
+        assert!(response.story_count.is_none());
+        assert!(response.error.is_some());
+        assert!(response.message.contains("not found"));
+        assert!(response.message.contains("audit-999"));
+    }
+
+    #[test]
+    fn test_generate_prd_response_serialization() {
+        let response = GeneratePrdFromAuditResponse {
+            success: true,
+            audit_id: Some("audit-123".to_string()),
+            prd_markdown_path: Some("/output/prd.md".to_string()),
+            prd_json_path: Some("/output/prd.json".to_string()),
+            story_count: Some(3),
+            error: None,
+            message: "Success".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"audit_id\":\"audit-123\""));
+        assert!(json.contains("\"prd_markdown_path\":\"/output/prd.md\""));
+        assert!(json.contains("\"prd_json_path\":\"/output/prd.json\""));
+        assert!(json.contains("\"story_count\":3"));
+        assert!(!json.contains("error")); // None fields should be skipped
+    }
+
+    #[test]
+    fn test_generate_prd_response_none_fields_not_serialized() {
+        let response = GeneratePrdFromAuditResponse {
+            success: false,
+            audit_id: None,
+            prd_markdown_path: None,
+            prd_json_path: None,
+            story_count: None,
+            error: None,
+            message: "Error".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("audit_id"));
+        assert!(!json.contains("prd_markdown_path"));
+        assert!(!json.contains("prd_json_path"));
+        assert!(!json.contains("story_count"));
+        assert!(!json.contains("error"));
     }
 }

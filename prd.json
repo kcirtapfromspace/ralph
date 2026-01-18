@@ -397,7 +397,7 @@
       "description": "As an AI agent, I want to retrieve audit results so I can present findings to the user.",
       "id": "US-023",
       "notes": "Serialize AuditReport to JSON for MCP response",
-      "passes": false,
+      "passes": true,
       "priority": 23,
       "title": "Implement get_audit_results MCP tool"
     },
@@ -415,7 +415,7 @@
       "description": "As an AI agent, I want to generate a PRD from audit results so users can start improving their codebase.",
       "id": "US-024",
       "notes": "Reuse prd_generator and prd_converter modules",
-      "passes": false,
+      "passes": true,
       "priority": 24,
       "title": "Implement generate_prd_from_audit MCP tool"
     },

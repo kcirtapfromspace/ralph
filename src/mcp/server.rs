@@ -3,17 +3,21 @@
 
 #![allow(dead_code)]
 
+use crate::audit::prd_converter::{PrdConverter, PrdConverterConfig};
+use crate::audit::prd_generator::{PrdGenerator, PrdGeneratorConfig};
 use crate::mcp::resources::{
     list_ralph_resources, read_prd_resource, read_status_resource, ResourceError, PRD_RESOURCE_URI,
     STATUS_RESOURCE_URI,
 };
 use crate::mcp::tools::audit::{
     all_sections, create_error_response as create_audit_error_response,
+    create_generate_prd_error_response, create_generate_prd_success_response,
     create_results_error_response, create_results_success_response, create_status_error_response,
     create_status_success_response, create_success_response as create_audit_success_response,
     generate_audit_id, get_audit_status_from_state, resolve_audit_path, AuditOutputFormat,
-    AuditState, AuditStatus, GetAuditResultsError, GetAuditResultsRequest, GetAuditStatusError,
-    GetAuditStatusRequest, StartAuditError, StartAuditRequest,
+    AuditState, AuditStatus, GeneratePrdFromAuditError, GeneratePrdFromAuditRequest,
+    GetAuditResultsError, GetAuditResultsRequest, GetAuditStatusError, GetAuditStatusRequest,
+    StartAuditError, StartAuditRequest,
 };
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::get_status::{GetStatusRequest, GetStatusResponse};
@@ -1050,6 +1054,191 @@ impl RalphMcpServer {
             None => {
                 let error = GetAuditResultsError::AuditNotFound(req.audit_id);
                 let response = create_results_error_response(&error);
+                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                })
+            }
+        }
+    }
+
+    /// Generate a PRD from completed audit results.
+    ///
+    /// This tool generates a Product Requirements Document (PRD) in both markdown
+    /// and prd.json formats from a completed audit. The generated PRD can be used
+    /// directly with Ralph to implement the improvements identified by the audit.
+    ///
+    /// # Parameters
+    ///
+    /// * `audit_id` - The audit ID returned from start_audit. The audit must be completed.
+    /// * `user_answers` - Optional user answers from the interactive Q&A session.
+    /// * `project_name` - Optional project name override.
+    /// * `output_dir` - Optional output directory for generated files.
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether the generation was successful
+    /// - `audit_id`: The audit ID
+    /// - `prd_markdown_path`: Path to the generated PRD markdown file
+    /// - `prd_json_path`: Path to the generated prd.json file
+    /// - `story_count`: Number of user stories generated
+    /// - `error`: Error message if failed
+    /// - `message`: Status message
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The audit ID is not found
+    /// - The audit is not yet complete (pending or running)
+    /// - The audit failed
+    /// - PRD generation fails
+    /// - PRD conversion fails
+    #[tool(
+        name = "generate_prd_from_audit",
+        description = "Generate a PRD from completed audit results. Creates both markdown and prd.json files that can be used with Ralph to implement improvements. The audit must be completed before calling this tool."
+    )]
+    pub async fn generate_prd_from_audit(
+        &self,
+        Parameters(req): Parameters<GeneratePrdFromAuditRequest>,
+    ) -> String {
+        // Get the audit state from server state
+        let audit_state = {
+            let state = self.state.read().await;
+            state.audit_states.get(&req.audit_id).cloned()
+        };
+
+        match audit_state {
+            Some(state) => {
+                let status = get_audit_status_from_state(&state);
+
+                match status {
+                    AuditStatus::Completed => {
+                        // Get the report
+                        match state.report {
+                            Some(report) => {
+                                // Determine output directory
+                                let output_dir = req
+                                    .output_dir
+                                    .map(PathBuf::from)
+                                    .unwrap_or_else(|| state.path.clone());
+
+                                // Create tasks directory if it doesn't exist
+                                let tasks_dir = output_dir.join("tasks");
+
+                                // Configure PRD generator
+                                let mut generator_config = PrdGeneratorConfig::new()
+                                    .with_skip_prompt(true)
+                                    .with_output_dir(tasks_dir.clone());
+
+                                if let Some(project_name) = req.project_name.clone() {
+                                    generator_config =
+                                        generator_config.with_project_name(project_name);
+                                }
+
+                                // Generate PRD markdown
+                                let generator = PrdGenerator::with_config(generator_config);
+                                let prd_result = match generator.generate(&report) {
+                                    Ok(result) => result,
+                                    Err(e) => {
+                                        let error = GeneratePrdFromAuditError::GenerationFailed(
+                                            e.to_string(),
+                                        );
+                                        let response = create_generate_prd_error_response(&error);
+                                        return serde_json::to_string_pretty(&response)
+                                            .unwrap_or_else(|e| {
+                                                format!(
+                                                "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                                e
+                                            )
+                                            });
+                                    }
+                                };
+
+                                // Configure PRD converter
+                                let mut converter_config = PrdConverterConfig::new()
+                                    .with_skip_prompt(true)
+                                    .with_output_dir(output_dir.clone());
+
+                                if let Some(project_name) = req.project_name {
+                                    converter_config =
+                                        converter_config.with_project_name(project_name);
+                                }
+
+                                // Convert PRD to prd.json
+                                let converter = PrdConverter::with_config(converter_config);
+                                let conversion_result = match converter
+                                    .convert(&prd_result.prd_path)
+                                {
+                                    Ok(result) => result,
+                                    Err(e) => {
+                                        let error = GeneratePrdFromAuditError::ConversionFailed(
+                                            e.to_string(),
+                                        );
+                                        let response = create_generate_prd_error_response(&error);
+                                        return serde_json::to_string_pretty(&response)
+                                                .unwrap_or_else(|e| {
+                                                    format!(
+                                                "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                                e
+                                            )
+                                                });
+                                    }
+                                };
+
+                                // Create success response
+                                let response = create_generate_prd_success_response(
+                                    &req.audit_id,
+                                    &prd_result.prd_path,
+                                    &conversion_result.prd_json_path,
+                                    conversion_result.story_count,
+                                );
+                                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                                    format!(
+                                        "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                        e
+                                    )
+                                })
+                            }
+                            None => {
+                                // Audit completed but no report
+                                let error = GeneratePrdFromAuditError::AuditFailed(
+                                    req.audit_id,
+                                    "Audit completed but no report available".to_string(),
+                                );
+                                let response = create_generate_prd_error_response(&error);
+                                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                                    format!(
+                                        "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                        e
+                                    )
+                                })
+                            }
+                        }
+                    }
+                    AuditStatus::Failed => {
+                        let error = GeneratePrdFromAuditError::AuditFailed(
+                            req.audit_id,
+                            state.error.unwrap_or_else(|| "Unknown error".to_string()),
+                        );
+                        let response = create_generate_prd_error_response(&error);
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                        })
+                    }
+                    _ => {
+                        // Audit is pending or running
+                        let error =
+                            GeneratePrdFromAuditError::AuditNotComplete(req.audit_id, status);
+                        let response = create_generate_prd_error_response(&error);
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                        })
+                    }
+                }
+            }
+            None => {
+                let error = GeneratePrdFromAuditError::AuditNotFound(req.audit_id);
+                let response = create_generate_prd_error_response(&error);
                 serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
                     format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
                 })
