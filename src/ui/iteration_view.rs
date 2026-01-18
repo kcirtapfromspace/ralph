@@ -441,6 +441,389 @@ impl LiveIterationPanel {
         self.tick();
         self.display()
     }
+
+    /// Convert to an iteration summary for display after completion.
+    pub fn to_summary(&self) -> IterationSummary {
+        let gate_results: Vec<GateSummary> = self
+            .gates
+            .iter()
+            .map(|g| GateSummary {
+                name: g.name.clone(),
+                passed: g.progress == GateProgress::Passed,
+                duration: g.duration,
+                error_details: None, // Error details can be added later
+            })
+            .collect();
+
+        let passed = !self.has_failure();
+        let total_duration = self.elapsed();
+
+        IterationSummary::new(self.iteration, self.total_iterations, passed, total_duration)
+            .with_gates(gate_results)
+    }
+}
+
+// ============================================================================
+// Iteration Summary
+// ============================================================================
+
+/// Summary of a single gate result for display in iteration summary.
+#[derive(Debug, Clone)]
+pub struct GateSummary {
+    /// Name of the gate
+    pub name: String,
+    /// Whether the gate passed
+    pub passed: bool,
+    /// Duration of the gate execution
+    pub duration: Option<Duration>,
+    /// Error details if the gate failed (for expanded view)
+    pub error_details: Option<String>,
+}
+
+impl GateSummary {
+    /// Create a new gate summary.
+    pub fn new(name: impl Into<String>, passed: bool) -> Self {
+        Self {
+            name: name.into(),
+            passed,
+            duration: None,
+            error_details: None,
+        }
+    }
+
+    /// Create a gate summary with duration.
+    pub fn with_duration(mut self, duration: Duration) -> Self {
+        self.duration = Some(duration);
+        self
+    }
+
+    /// Create a gate summary with error details.
+    pub fn with_error(mut self, error: impl Into<String>) -> Self {
+        self.error_details = Some(error.into());
+        self
+    }
+
+    /// Format the duration for display.
+    pub fn format_duration(&self) -> Option<String> {
+        self.duration.map(|d| {
+            if d.as_secs() >= 60 {
+                format!(
+                    "{}m{:.1}s",
+                    d.as_secs() / 60,
+                    (d.as_millis() % 60000) as f64 / 1000.0
+                )
+            } else {
+                format!("{:.1}s", d.as_secs_f64())
+            }
+        })
+    }
+}
+
+/// Summary of a completed iteration.
+///
+/// Renders as a collapsed single line for successful iterations,
+/// or auto-expands to show error details for failed iterations.
+#[derive(Debug, Clone)]
+pub struct IterationSummary {
+    /// Iteration number
+    iteration: u64,
+    /// Total number of iterations
+    total_iterations: u64,
+    /// Whether the iteration passed (all gates successful)
+    passed: bool,
+    /// Total duration of the iteration
+    duration: Duration,
+    /// Individual gate summaries
+    gates: Vec<GateSummary>,
+    /// Color theme for rendering
+    theme: Theme,
+}
+
+impl IterationSummary {
+    /// Create a new iteration summary.
+    pub fn new(iteration: u64, total_iterations: u64, passed: bool, duration: Duration) -> Self {
+        Self {
+            iteration,
+            total_iterations,
+            passed,
+            duration,
+            gates: Vec::new(),
+            theme: Theme::default(),
+        }
+    }
+
+    /// Create an iteration summary with a custom theme.
+    pub fn with_theme(mut self, theme: Theme) -> Self {
+        self.theme = theme;
+        self
+    }
+
+    /// Set the gate summaries for this iteration.
+    pub fn with_gates(mut self, gates: Vec<GateSummary>) -> Self {
+        self.gates = gates;
+        self
+    }
+
+    /// Get whether this iteration passed.
+    pub fn passed(&self) -> bool {
+        self.passed
+    }
+
+    /// Get the iteration number.
+    pub fn iteration(&self) -> u64 {
+        self.iteration
+    }
+
+    /// Get the total duration.
+    pub fn duration(&self) -> Duration {
+        self.duration
+    }
+
+    /// Format the total duration for display.
+    pub fn format_duration(&self) -> String {
+        if self.duration.as_secs() >= 60 {
+            format!(
+                "{}m{:.1}s",
+                self.duration.as_secs() / 60,
+                (self.duration.as_millis() % 60000) as f64 / 1000.0
+            )
+        } else {
+            format!("{:.1}s", self.duration.as_secs_f64())
+        }
+    }
+
+    /// Render the collapsed summary line.
+    ///
+    /// Format: "▸ Iteration 1/5: ✓ build ✓ lint ✓ test (3.2s)"
+    pub fn render_collapsed(&self) -> String {
+        let gate_parts: Vec<String> = self
+            .gates
+            .iter()
+            .map(|g| {
+                let indicator = if g.passed {
+                    format!("{}", "✓".color(self.theme.success))
+                } else {
+                    format!("{}", "✗".color(self.theme.error))
+                };
+                format!("{} {}", indicator, g.name)
+            })
+            .collect();
+
+        let status_color = if self.passed {
+            self.theme.success
+        } else {
+            self.theme.error
+        };
+
+        format!(
+            "{} Iteration {}/{}: {} ({})",
+            "▸".color(self.theme.muted),
+            self.iteration.to_string().color(status_color),
+            self.total_iterations,
+            gate_parts.join(" "),
+            self.format_duration().color(self.theme.muted)
+        )
+    }
+
+    /// Render the expanded view showing error details.
+    ///
+    /// Used when an iteration failed to show what went wrong.
+    pub fn render_expanded(&self) -> String {
+        let mut output = String::new();
+
+        // Header line with expanded indicator
+        let status_color = if self.passed {
+            self.theme.success
+        } else {
+            self.theme.error
+        };
+
+        output.push_str(&format!(
+            "{} Iteration {}/{} ({})\n",
+            "▾".color(self.theme.muted),
+            self.iteration.to_string().color(status_color),
+            self.total_iterations,
+            self.format_duration().color(self.theme.muted)
+        ));
+
+        // Gate details
+        for gate in &self.gates {
+            let indicator = if gate.passed {
+                format!("{}", "✓".color(self.theme.success))
+            } else {
+                format!("{}", "✗".color(self.theme.error))
+            };
+
+            let name_color = if gate.passed {
+                self.theme.success
+            } else {
+                self.theme.error
+            };
+
+            let timing = gate
+                .format_duration()
+                .map(|d| format!(" ({})", d.color(self.theme.muted)))
+                .unwrap_or_default();
+
+            output.push_str(&format!(
+                "  {} {}{}\n",
+                indicator,
+                gate.name.color(name_color),
+                timing
+            ));
+
+            // Show error details for failed gates
+            if !gate.passed {
+                if let Some(ref error) = gate.error_details {
+                    for line in error.lines() {
+                        output.push_str(&format!(
+                            "    {}\n",
+                            line.color(self.theme.error)
+                        ));
+                    }
+                }
+            }
+        }
+
+        output
+    }
+
+    /// Render the summary, auto-expanding if failed.
+    ///
+    /// Successful iterations are collapsed, failed ones are expanded.
+    pub fn render(&self) -> String {
+        if self.passed {
+            format!("{}\n", self.render_collapsed())
+        } else {
+            self.render_expanded()
+        }
+    }
+}
+
+// ============================================================================
+// Iteration Summary Stack
+// ============================================================================
+
+/// A stack of iteration summaries for displaying multiple completed iterations.
+///
+/// Renders all summaries stacked vertically, with failed iterations expanded.
+#[derive(Debug, Clone)]
+pub struct IterationSummaryStack {
+    /// Completed iteration summaries in order
+    summaries: Vec<IterationSummary>,
+    /// Color theme for rendering
+    theme: Theme,
+}
+
+impl IterationSummaryStack {
+    /// Create a new empty summary stack.
+    pub fn new() -> Self {
+        Self {
+            summaries: Vec::new(),
+            theme: Theme::default(),
+        }
+    }
+
+    /// Create a summary stack with a custom theme.
+    pub fn with_theme(theme: Theme) -> Self {
+        Self {
+            summaries: Vec::new(),
+            theme,
+        }
+    }
+
+    /// Add a completed iteration summary to the stack.
+    pub fn push(&mut self, summary: IterationSummary) {
+        self.summaries.push(summary);
+    }
+
+    /// Get the number of summaries in the stack.
+    pub fn len(&self) -> usize {
+        self.summaries.len()
+    }
+
+    /// Check if the stack is empty.
+    pub fn is_empty(&self) -> bool {
+        self.summaries.is_empty()
+    }
+
+    /// Get all summaries.
+    pub fn summaries(&self) -> &[IterationSummary] {
+        &self.summaries
+    }
+
+    /// Check if all iterations passed.
+    pub fn all_passed(&self) -> bool {
+        self.summaries.iter().all(|s| s.passed())
+    }
+
+    /// Get the total duration of all iterations.
+    pub fn total_duration(&self) -> Duration {
+        self.summaries.iter().map(|s| s.duration()).sum()
+    }
+
+    /// Format the total duration for display.
+    pub fn format_total_duration(&self) -> String {
+        let total = self.total_duration();
+        if total.as_secs() >= 60 {
+            format!(
+                "{}m{:.1}s",
+                total.as_secs() / 60,
+                (total.as_millis() % 60000) as f64 / 1000.0
+            )
+        } else {
+            format!("{:.1}s", total.as_secs_f64())
+        }
+    }
+
+    /// Render all summaries stacked vertically.
+    pub fn render(&self) -> String {
+        if self.summaries.is_empty() {
+            return String::new();
+        }
+
+        self.summaries
+            .iter()
+            .map(|s| s.render())
+            .collect::<Vec<_>>()
+            .join("")
+    }
+
+    /// Render a final summary line after all iterations complete.
+    pub fn render_final_summary(&self) -> String {
+        if self.summaries.is_empty() {
+            return String::new();
+        }
+
+        let passed_count = self.summaries.iter().filter(|s| s.passed()).count();
+        let total_count = self.summaries.len();
+
+        let status = if self.all_passed() {
+            format!("{}", "All iterations passed".color(self.theme.success))
+        } else {
+            format!(
+                "{}/{} iterations passed",
+                passed_count.to_string().color(if passed_count > 0 {
+                    self.theme.success
+                } else {
+                    self.theme.error
+                }),
+                total_count
+            )
+        };
+
+        format!(
+            "\n{} (total: {})\n",
+            status,
+            self.format_total_duration().color(self.theme.muted)
+        )
+    }
+}
+
+impl Default for IterationSummaryStack {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[cfg(test)]
@@ -707,5 +1090,316 @@ mod tests {
         panel.start_gate("unknown");
         panel.pass_gate("unknown", Duration::from_secs(1));
         panel.fail_gate("unknown", Duration::from_secs(1));
+    }
+
+    #[test]
+    fn test_live_iteration_panel_to_summary() {
+        let gates = vec!["build".to_string(), "lint".to_string()];
+        let mut panel = LiveIterationPanel::new(1, 5, gates);
+        panel.pass_gate("build", Duration::from_secs_f64(1.0));
+        panel.pass_gate("lint", Duration::from_secs_f64(0.5));
+
+        let summary = panel.to_summary();
+        assert!(summary.passed());
+        assert_eq!(summary.iteration(), 1);
+    }
+
+    // ========================================================================
+    // GateSummary Tests
+    // ========================================================================
+
+    #[test]
+    fn test_gate_summary_new() {
+        let summary = GateSummary::new("build", true);
+        assert_eq!(summary.name, "build");
+        assert!(summary.passed);
+        assert!(summary.duration.is_none());
+        assert!(summary.error_details.is_none());
+    }
+
+    #[test]
+    fn test_gate_summary_with_duration() {
+        let summary = GateSummary::new("lint", true).with_duration(Duration::from_secs_f64(2.5));
+        assert_eq!(summary.format_duration(), Some("2.5s".to_string()));
+    }
+
+    #[test]
+    fn test_gate_summary_with_error() {
+        let summary =
+            GateSummary::new("test", false).with_error("assertion failed at line 42");
+        assert_eq!(
+            summary.error_details,
+            Some("assertion failed at line 42".to_string())
+        );
+    }
+
+    #[test]
+    fn test_gate_summary_format_duration_minutes() {
+        let summary = GateSummary::new("test", true).with_duration(Duration::from_secs(125));
+        let formatted = summary.format_duration().unwrap();
+        assert!(formatted.contains("2m"));
+    }
+
+    // ========================================================================
+    // IterationSummary Tests
+    // ========================================================================
+
+    #[test]
+    fn test_iteration_summary_new() {
+        let summary = IterationSummary::new(1, 5, true, Duration::from_secs_f64(3.2));
+        assert!(summary.passed());
+        assert_eq!(summary.iteration(), 1);
+        assert_eq!(summary.duration(), Duration::from_secs_f64(3.2));
+    }
+
+    #[test]
+    fn test_iteration_summary_with_theme() {
+        let summary = IterationSummary::new(1, 5, true, Duration::from_secs(1))
+            .with_theme(Theme::default());
+        assert!(summary.passed());
+    }
+
+    #[test]
+    fn test_iteration_summary_with_gates() {
+        let gates = vec![
+            GateSummary::new("build", true).with_duration(Duration::from_secs_f64(1.0)),
+            GateSummary::new("lint", true).with_duration(Duration::from_secs_f64(0.5)),
+        ];
+        let summary =
+            IterationSummary::new(1, 5, true, Duration::from_secs_f64(1.5)).with_gates(gates);
+        assert!(summary.passed());
+    }
+
+    #[test]
+    fn test_iteration_summary_format_duration_seconds() {
+        let summary = IterationSummary::new(1, 5, true, Duration::from_secs_f64(3.2));
+        assert_eq!(summary.format_duration(), "3.2s");
+    }
+
+    #[test]
+    fn test_iteration_summary_format_duration_minutes() {
+        let summary = IterationSummary::new(1, 5, true, Duration::from_secs(125));
+        let formatted = summary.format_duration();
+        assert!(formatted.contains("2m"));
+    }
+
+    #[test]
+    fn test_iteration_summary_render_collapsed() {
+        let gates = vec![
+            GateSummary::new("build", true),
+            GateSummary::new("lint", true),
+            GateSummary::new("test", true),
+        ];
+        let summary =
+            IterationSummary::new(1, 5, true, Duration::from_secs_f64(3.2)).with_gates(gates);
+        let output = summary.render_collapsed();
+
+        assert!(output.contains("▸"));
+        assert!(output.contains("Iteration"));
+        assert!(output.contains("1"));
+        assert!(output.contains("5"));
+        assert!(output.contains("build"));
+        assert!(output.contains("lint"));
+        assert!(output.contains("test"));
+        assert!(output.contains("✓"));
+        assert!(output.contains("3.2s"));
+    }
+
+    #[test]
+    fn test_iteration_summary_render_collapsed_with_failure() {
+        let gates = vec![
+            GateSummary::new("build", true),
+            GateSummary::new("lint", false),
+        ];
+        let summary =
+            IterationSummary::new(1, 5, false, Duration::from_secs_f64(1.5)).with_gates(gates);
+        let output = summary.render_collapsed();
+
+        assert!(output.contains("✓")); // build passed
+        assert!(output.contains("✗")); // lint failed
+    }
+
+    #[test]
+    fn test_iteration_summary_render_expanded() {
+        let gates = vec![
+            GateSummary::new("build", true).with_duration(Duration::from_secs_f64(1.0)),
+            GateSummary::new("test", false)
+                .with_duration(Duration::from_secs_f64(0.5))
+                .with_error("test failed: expected 1, got 2"),
+        ];
+        let summary =
+            IterationSummary::new(1, 5, false, Duration::from_secs_f64(1.5)).with_gates(gates);
+        let output = summary.render_expanded();
+
+        assert!(output.contains("▾")); // expanded indicator
+        assert!(output.contains("Iteration"));
+        assert!(output.contains("build"));
+        assert!(output.contains("test"));
+        assert!(output.contains("test failed")); // error details
+    }
+
+    #[test]
+    fn test_iteration_summary_render_auto_collapse_passed() {
+        let gates = vec![GateSummary::new("build", true)];
+        let summary =
+            IterationSummary::new(1, 5, true, Duration::from_secs_f64(1.0)).with_gates(gates);
+        let output = summary.render();
+
+        // Passed iteration should be collapsed (single line with newline)
+        assert!(output.contains("▸"));
+        assert_eq!(output.lines().count(), 1);
+    }
+
+    #[test]
+    fn test_iteration_summary_render_auto_expand_failed() {
+        let gates = vec![
+            GateSummary::new("build", false).with_error("compilation error"),
+        ];
+        let summary =
+            IterationSummary::new(1, 5, false, Duration::from_secs_f64(1.0)).with_gates(gates);
+        let output = summary.render();
+
+        // Failed iteration should be expanded (multiple lines)
+        assert!(output.contains("▾"));
+        assert!(output.lines().count() > 1);
+    }
+
+    // ========================================================================
+    // IterationSummaryStack Tests
+    // ========================================================================
+
+    #[test]
+    fn test_iteration_summary_stack_new() {
+        let stack = IterationSummaryStack::new();
+        assert!(stack.is_empty());
+        assert_eq!(stack.len(), 0);
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_with_theme() {
+        let stack = IterationSummaryStack::with_theme(Theme::default());
+        assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_default() {
+        let stack = IterationSummaryStack::default();
+        assert!(stack.is_empty());
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_push() {
+        let mut stack = IterationSummaryStack::new();
+        let summary = IterationSummary::new(1, 5, true, Duration::from_secs(1));
+        stack.push(summary);
+
+        assert!(!stack.is_empty());
+        assert_eq!(stack.len(), 1);
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_all_passed() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 3, true, Duration::from_secs(2)));
+        stack.push(IterationSummary::new(3, 3, true, Duration::from_secs(1)));
+
+        assert!(stack.all_passed());
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_not_all_passed() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 3, false, Duration::from_secs(2)));
+        stack.push(IterationSummary::new(3, 3, true, Duration::from_secs(1)));
+
+        assert!(!stack.all_passed());
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_total_duration() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 3, true, Duration::from_secs(2)));
+
+        assert_eq!(stack.total_duration(), Duration::from_secs(3));
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_format_total_duration() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs_f64(1.5)));
+        stack.push(IterationSummary::new(2, 3, true, Duration::from_secs_f64(2.0)));
+
+        assert_eq!(stack.format_total_duration(), "3.5s");
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_summaries() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 3, true, Duration::from_secs(2)));
+
+        let summaries = stack.summaries();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].iteration(), 1);
+        assert_eq!(summaries[1].iteration(), 2);
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_render_empty() {
+        let stack = IterationSummaryStack::new();
+        assert_eq!(stack.render(), "");
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_render() {
+        let mut stack = IterationSummaryStack::new();
+
+        let gates1 = vec![GateSummary::new("build", true)];
+        stack.push(
+            IterationSummary::new(1, 3, true, Duration::from_secs(1)).with_gates(gates1),
+        );
+
+        let gates2 = vec![GateSummary::new("build", true)];
+        stack.push(
+            IterationSummary::new(2, 3, true, Duration::from_secs(2)).with_gates(gates2),
+        );
+
+        let output = stack.render();
+        assert!(output.contains("Iteration"));
+        assert!(output.contains("1"));
+        assert!(output.contains("2"));
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_render_final_summary_empty() {
+        let stack = IterationSummaryStack::new();
+        assert_eq!(stack.render_final_summary(), "");
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_render_final_summary_all_passed() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 2, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 2, true, Duration::from_secs(2)));
+
+        let output = stack.render_final_summary();
+        assert!(output.contains("All iterations passed"));
+        assert!(output.contains("total"));
+    }
+
+    #[test]
+    fn test_iteration_summary_stack_render_final_summary_some_failed() {
+        let mut stack = IterationSummaryStack::new();
+        stack.push(IterationSummary::new(1, 3, true, Duration::from_secs(1)));
+        stack.push(IterationSummary::new(2, 3, false, Duration::from_secs(2)));
+        stack.push(IterationSummary::new(3, 3, true, Duration::from_secs(1)));
+
+        let output = stack.render_final_summary();
+        assert!(output.contains("2"));
+        assert!(output.contains("3"));
+        assert!(output.contains("iterations passed"));
     }
 }
