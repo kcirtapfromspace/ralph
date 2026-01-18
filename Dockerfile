@@ -3,11 +3,18 @@
 # Ralph MCP Server - Multi-stage build for minimal image size
 # This Dockerfile builds the Ralph MCP server for use with Docker MCP toolkit
 #
+# NOTE: This is a deployment repository. The Dockerfile clones the Ralph source
+# from GitHub during build. Source code lives at: https://github.com/kcirtapfromspace/ralph
+#
 # Build Arguments:
 #   VERSION     - Semantic version for the build (e.g., "1.0.0")
 #   COMMIT_SHA  - Git commit SHA for traceability
+#   RALPH_REPO  - Git repository URL (default: https://github.com/kcirtapfromspace/ralph.git)
+#   RALPH_REF   - Git branch/tag to build from (default: main)
 #
 # Usage:
+#   docker build -t ralph .
+#   docker build --build-arg RALPH_REF=v1.0.0 -t ralph:1.0.0 .
 #   docker build --build-arg VERSION=1.0.0 --build-arg COMMIT_SHA=$(git rev-parse HEAD) -t ralph .
 #
 # These build args are embedded as labels for version tracking and debugging.
@@ -23,29 +30,16 @@ FROM rust:1.75-slim-bookworm AS builder
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
+    git \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Copy workspace files for dependency caching
-COPY Cargo.toml Cargo.lock ./
-COPY cli/Cargo.toml ./cli/
-
-# Create dummy source files to cache dependencies
-RUN mkdir -p src cli/src && \
-    echo 'fn main() {}' > src/main.rs && \
-    echo 'fn main() {}' > cli/src/main.rs
-
-# Build dependencies only (this layer gets cached)
-RUN cargo build --release && rm -rf src cli/src
-
-# Copy actual source code
-COPY src ./src
-COPY cli/src ./cli/src
-COPY quality ./quality
-
-# Touch main.rs to force rebuild with actual code
-RUN touch src/main.rs cli/src/main.rs
+# Clone the Ralph source repository
+# This Dockerfile is for deployment - source lives in the main ralph repo
+ARG RALPH_REPO=https://github.com/kcirtapfromspace/ralph.git
+ARG RALPH_REF=main
+RUN git clone --depth 1 --branch ${RALPH_REF} ${RALPH_REPO} .
 
 # Build the release binary
 RUN cargo build --release --bin ralph
