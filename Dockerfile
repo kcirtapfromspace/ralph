@@ -24,7 +24,8 @@ ARG VERSION=dev
 ARG COMMIT_SHA=unknown
 
 # Stage 1: Build the Rust binary
-FROM rust:1.75-slim-bookworm AS builder
+# Using Rust 1.78+ for Cargo.lock version 4 support
+FROM rust:1.78-slim-bookworm AS builder
 
 # Install build dependencies
 RUN apt-get update && apt-get install -y \
