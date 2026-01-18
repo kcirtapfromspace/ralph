@@ -411,7 +411,7 @@ async fn run_audit(
 ) -> Result<(), Box<dyn std::error::Error>> {
     use audit::{
         AgentContext, AgentContextWriter, AuditReport, InventoryScanner, JsonReportWriter,
-        MarkdownReportWriter, PrdGenerator, PrdGeneratorConfig,
+        MarkdownReportWriter, PrdConverter, PrdConverterConfig, PrdGenerator, PrdGeneratorConfig,
     };
     use std::time::Instant;
 
@@ -525,6 +525,36 @@ async fn run_audit(
                     "  - {} from findings, {} from opportunities",
                     result.findings_converted, result.opportunities_converted
                 );
+            }
+
+            // Convert PRD to prd.json
+            let converter_config = PrdConverterConfig::new()
+                .with_skip_prompt(generate_prd) // Skip prompt if --generate-prd flag is set
+                .with_output_dir(target_dir.clone());
+
+            let converter = PrdConverter::with_config(converter_config);
+
+            // Prompt user unless --generate-prd flag is set
+            let should_convert = if generate_prd {
+                true
+            } else {
+                converter.prompt_user_confirmation()?
+            };
+
+            if should_convert {
+                let convert_result = converter.convert(&result.prd_path)?;
+                if !cli.quiet {
+                    eprintln!(
+                        "Converted PRD to prd.json with {} stories at: {}",
+                        convert_result.story_count,
+                        convert_result.prd_json_path.display()
+                    );
+                    eprintln!(
+                        "  - Project: {}, Branch: {}",
+                        convert_result.project_name, convert_result.branch_name
+                    );
+                    eprintln!("You can now run 'ralph run' to execute the user stories.");
+                }
             }
         }
     }

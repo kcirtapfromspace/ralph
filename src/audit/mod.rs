@@ -20,6 +20,7 @@ pub mod inventory;
 pub mod languages;
 pub mod output;
 pub mod patterns;
+pub mod prd_converter;
 pub mod prd_generator;
 pub mod testing;
 
@@ -68,6 +69,10 @@ pub use output::{
 pub use patterns::{
     AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,
     PatternAnalysis, PatternAnalyzer,
+};
+#[allow(unused_imports)]
+pub use prd_converter::{
+    PrdConversionResult, PrdConverter, PrdConverterConfig, PrdJson, PrdUserStory,
 };
 #[allow(unused_imports)]
 pub use prd_generator::{
