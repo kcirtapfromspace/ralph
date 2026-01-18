@@ -39,6 +39,7 @@ impl Default for RunnerConfig {
 
 /// Result of running all stories
 #[derive(Debug)]
+#[allow(dead_code)] // Fields may be used by callers
 pub struct RunResult {
     /// Whether all stories passed
     pub all_passed: bool,
@@ -92,9 +93,7 @@ impl Runner {
                     stories_passed: 0,
                     total_stories,
                     total_iterations: 0,
-                    error: Some(
-                        "No agent found. Install Claude Code CLI or Amp CLI.".to_string(),
-                    ),
+                    error: Some("No agent found. Install Claude Code CLI or Amp CLI.".to_string()),
                 };
             }
         };
@@ -192,10 +191,7 @@ impl Runner {
                         })
                         .await;
 
-                    total_iterations += result
-                        .as_ref()
-                        .map(|r| r.iterations_used)
-                        .unwrap_or(1);
+                    total_iterations += result.as_ref().map(|r| r.iterations_used).unwrap_or(1);
 
                     match result {
                         Ok(exec_result) => {
@@ -208,16 +204,14 @@ impl Runner {
                                     );
                                     println!();
                                 }
-                            } else {
-                                if !self.config.quiet {
-                                    println!(
-                                        "  ✗ Story {} failed: {}",
-                                        story_id,
-                                        exec_result.error.as_deref().unwrap_or("unknown")
-                                    );
-                                    println!("  Continuing to next story...");
-                                    println!();
-                                }
+                            } else if !self.config.quiet {
+                                println!(
+                                    "  ✗ Story {} failed: {}",
+                                    story_id,
+                                    exec_result.error.as_deref().unwrap_or("unknown")
+                                );
+                                println!("  Continuing to next story...");
+                                println!();
                             }
                         }
                         Err(e) => {
@@ -239,8 +233,7 @@ impl Runner {
         let content = std::fs::read_to_string(&self.config.prd_path)
             .map_err(|e| format!("Failed to read {}: {}", self.config.prd_path.display(), e))?;
 
-        serde_json::from_str(&content)
-            .map_err(|e| format!("Failed to parse PRD: {}", e))
+        serde_json::from_str(&content).map_err(|e| format!("Failed to parse PRD: {}", e))
     }
 
     /// Find the next story to work on (highest priority where passes: false)
