@@ -78,6 +78,11 @@ RUN chown -R ralph:ralph /app
 # Switch to non-root user
 USER ralph
 
+# Health check verifies the ralph binary is functional
+# For stdio-based MCP servers, we check that the binary responds to --help
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+    CMD ["ralph", "--help"]
+
 # MCP server uses stdio for communication
 # The entrypoint runs the MCP server mode
 ENTRYPOINT ["ralph", "mcp-server"]
