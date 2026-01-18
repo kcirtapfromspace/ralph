@@ -23,7 +23,7 @@ pub struct RunnerConfig {
     pub max_total_iterations: u32,
     /// Agent command to use (auto-detect if None)
     pub agent_command: Option<String>,
-/// Display options for UI rendering (includes quiet mode, verbosity, etc.)
+    /// Display options for UI rendering (includes quiet mode, verbosity, etc.)
     pub display_options: DisplayOptions,
     /// Enable parallel execution mode
     pub parallel: bool,
@@ -39,7 +39,7 @@ impl Default for RunnerConfig {
             max_iterations_per_story: 10,
             max_total_iterations: 0, // unlimited
             agent_command: None,
-display_options: DisplayOptions::default(),
+            display_options: DisplayOptions::default(),
             parallel: false,
             parallel_config: None,
         }

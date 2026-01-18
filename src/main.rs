@@ -353,7 +353,7 @@ async fn run_stories(
         max_iterations_per_story: max_iterations,
         max_total_iterations: 0, // unlimited
         agent_command: None,     // auto-detect
-display_options,
+        display_options,
         parallel,
         parallel_config: Some(parallel_config),
     };
