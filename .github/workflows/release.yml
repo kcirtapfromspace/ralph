@@ -111,10 +111,13 @@ jobs:
           # List prepared assets
           ls -la release/
 
-      - name: Create GitHub Release
+      - name: Upload Release Assets
         uses: softprops/action-gh-release@v2
         with:
           files: release/*
-          generate_release_notes: true
+          # Don't generate notes - release-please already created the release with changelog
+          generate_release_notes: false
+          # Append to existing release created by release-please
+          append_body: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
