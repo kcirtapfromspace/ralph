@@ -386,7 +386,7 @@
       "description": "As a developer, I want to enable parallel execution from CLI.",
       "id": "US-019",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 19,
       "targetFiles": [
         "src/main.rs"
