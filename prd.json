@@ -448,7 +448,7 @@
       "description": "As a developer, I want to run the audit on Ralph itself so I can verify it works end-to-end.",
       "id": "US-026",
       "notes": "Use tests/ directory for integration tests",
-      "passes": false,
+      "passes": true,
       "priority": 26,
       "title": "Integration test on Ralph's own codebase"
     }
