@@ -10,6 +10,7 @@
 // Allow dead code for scaffolding - will be used in future stories
 #![allow(dead_code)]
 
+pub mod api;
 pub mod architecture;
 pub mod dependencies;
 pub mod inventory;
@@ -17,6 +18,10 @@ pub mod languages;
 pub mod patterns;
 
 // Re-exports for convenience
+#[allow(unused_imports)]
+pub use api::{
+    ApiAnalysis, ApiFramework, ApiInventory, CliCommand, HttpEndpoint, HttpMethod, McpTool,
+};
 #[allow(unused_imports)]
 pub use architecture::{
     ArchitectureAnalysis, ArchitectureAnalyzer, ArchitectureLayer, ArchitecturePattern,
