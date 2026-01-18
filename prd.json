@@ -154,7 +154,7 @@
       "description": "As a user, I want the audit to find missing documentation so I know what needs to be documented.",
       "id": "US-009",
       "notes": "Look for /// comments before pub items in Rust",
-      "passes": false,
+      "passes": true,
       "priority": 9,
       "title": "Implement documentation gap detection"
     },

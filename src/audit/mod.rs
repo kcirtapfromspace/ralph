@@ -13,6 +13,7 @@
 pub mod api;
 pub mod architecture;
 pub mod dependencies;
+pub mod detectors;
 pub mod documentation;
 pub mod inventory;
 pub mod languages;
@@ -32,6 +33,10 @@ pub use architecture::{
 #[allow(unused_imports)]
 pub use dependencies::{
     Dependency, DependencyAnalysis, DependencyEcosystem, DependencyParser, OutdatedInfo,
+};
+#[allow(unused_imports)]
+pub use detectors::{
+    ArchitectureGap, ArchitectureGapType, ArchitectureGapsAnalysis, ArchitectureGapsDetector,
 };
 #[allow(unused_imports)]
 pub use documentation::{
