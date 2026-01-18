@@ -5,6 +5,8 @@
 //! - Iteration progress with gate chain
 //! - Completion summaries with git info
 
+#![allow(dead_code)]
+
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

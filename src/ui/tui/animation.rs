@@ -5,6 +5,8 @@
 //! - Tween interpolation for smooth value transitions
 //! - Animation state management
 
+#![allow(dead_code)]
+
 use std::time::{Duration, Instant};
 
 /// Easing functions for smooth animations.

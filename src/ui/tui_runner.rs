@@ -2,6 +2,8 @@
 //!
 //! Uses ratatui widgets for rich progress and status display.
 
+#![allow(dead_code)]
+
 use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
@@ -308,9 +310,7 @@ impl TuiRunnerDisplay {
         println!();
         println!(
             "{}",
-            self.style_success(&format!(
-                "╔════════════════════════════════════════════════════════════╗"
-            ))
+            self.style_success("╔════════════════════════════════════════════════════════════╗")
         );
         println!(
             "{}",
@@ -321,9 +321,7 @@ impl TuiRunnerDisplay {
         );
         println!(
             "{}",
-            self.style_success(&format!(
-                "╚════════════════════════════════════════════════════════════╝"
-            ))
+            self.style_success("╚════════════════════════════════════════════════════════════╝")
         );
         println!();
         println!("<promise>COMPLETE</promise>");

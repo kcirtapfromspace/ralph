@@ -251,10 +251,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 /// Find the PRD file, checking multiple locations
-fn find_prd_file(default_path: &PathBuf) -> Option<PathBuf> {
+fn find_prd_file(default_path: &std::path::Path) -> Option<PathBuf> {
     // Check the specified path first
     if default_path.exists() {
-        return Some(default_path.clone());
+        return Some(default_path.to_path_buf());
     }
 
     // Check ralph/prd.json

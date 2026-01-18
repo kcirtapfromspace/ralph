@@ -3,6 +3,8 @@
 //! Provides the main application loop and state management
 //! for the ratatui-based terminal UI.
 
+#![allow(dead_code)]
+
 use std::io::{self, stdout, Stdout};
 use std::time::{Duration, Instant};
 

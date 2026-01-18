@@ -3,6 +3,8 @@
 //! Provides visual progress bars with smooth animations,
 //! status indicators, and gradient colors.
 
+#![allow(dead_code)]
+
 use ratatui::{
     buffer::Buffer,
     layout::Rect,

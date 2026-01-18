@@ -12,6 +12,8 @@
 //! - WezTerm
 //! - iTerm2 (partial)
 
+#![allow(dead_code)]
+
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine};
 use image::{DynamicImage, GenericImageView, ImageFormat};
 use std::io::{self, Write};
@@ -213,7 +215,7 @@ impl KittyGraphics {
         let mut cursor = std::io::Cursor::new(&mut png_data);
         image
             .write_to(&mut cursor, ImageFormat::Png)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         self.display_png_data(&png_data, placement)
     }
@@ -335,7 +337,7 @@ impl KittyGraphics {
         let mut cursor = std::io::Cursor::new(&mut png_data);
         image
             .write_to(&mut cursor, ImageFormat::Png)
-            .map_err(|e| io::Error::new(io::ErrorKind::Other, e))?;
+            .map_err(io::Error::other)?;
 
         self.render_png_string(&png_data, placement)
     }
