@@ -253,7 +253,7 @@
       "description": "As a developer, I want audit patterns written to progress.txt so agents can follow existing conventions.",
       "id": "US-015",
       "notes": "Format matches existing progress.txt pattern",
-      "passes": false,
+      "passes": true,
       "priority": 15,
       "title": "Implement agent context output"
     },
