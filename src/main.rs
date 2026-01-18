@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 
@@ -56,6 +56,10 @@ struct Cli {
     /// Suppress all output except errors
     #[arg(long, short)]
     quiet: bool,
+
+    /// Increase verbosity (-v, -vv, -vvv)
+    #[arg(long, short, action = ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
 
     /// Print help information with styled output
     #[arg(long, short)]
@@ -126,6 +130,9 @@ fn build_display_options(cli: &Cli) -> DisplayOptions {
         .with_ui_mode(cli.ui.into())
         .with_color(!cli.no_color)
         .with_quiet(cli.quiet)
+        .with_verbosity(cli.verbose)
+        .with_streaming(true) // Streaming is now default
+        .with_expand_details(cli.verbose >= 1) // Expand details at -v or higher
 }
 
 #[tokio::main]
@@ -280,6 +287,7 @@ async fn run_stories(
     max_iterations: u32,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let working_dir = dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let display_options = build_display_options(cli);
 
     let config = RunnerConfig {
         prd_path: if prd.is_absolute() {
@@ -291,7 +299,7 @@ async fn run_stories(
         max_iterations_per_story: max_iterations,
         max_total_iterations: 0, // unlimited
         agent_command: None,     // auto-detect
-        quiet: cli.quiet,
+        display_options,
     };
 
     let runner = Runner::new(config);
