@@ -2,6 +2,7 @@ use clap::{Parser, ValueEnum};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 
+mod audit;
 mod integrations;
 mod mcp;
 mod quality;

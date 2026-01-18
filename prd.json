@@ -1,126 +1,456 @@
 {
-  "branchName": "ralph/docker-build-optimization",
-  "description": "Optimize Docker build from 1+ hour to under 10 minutes using cargo-chef, sccache, BuildKit caching, and cross-compilation",
   "project": "Ralph",
+  "branchName": "ralph/codebase-audit",
+  "description": "Add comprehensive codebase audit, inventory, and evaluation feature to Ralph - enabling pre-development context, architecture gap detection, interactive Q&A refinement, and automatic PRD generation with prd.json conversion for immediate execution",
   "userStories": [
     {
-      "acceptanceCriteria": [
-        "Add cargo-chef planner stage that generates recipe.json from Cargo.toml/Cargo.lock",
-        "Add cargo-chef cook stage that builds dependencies from recipe",
-        "Builder stage copies source and builds only application code",
-        "Use same Rust version (1.85) across all stages",
-        "Source code changes don't invalidate dependency cache layer",
-        "Docker build succeeds locally with `docker build -t ralph .`",
-        "Typecheck passes"
-      ],
-      "description": "As a CI system, I want to cache compiled Rust dependencies separately from source code so that dependency changes don't require full rebuilds.",
       "id": "US-001",
-      "notes": "Foundation for all other optimizations. See https://github.com/LukeMathWalker/cargo-chef",
-      "passes": true,
+      "title": "Create audit module structure",
+      "description": "As a developer, I need the audit module scaffolding so other audit features can be built on top of it.",
+      "acceptanceCriteria": [
+        "Create src/audit/mod.rs with module organization and re-exports",
+        "Define core types: AuditReport, AuditFinding, FeatureOpportunity, Severity",
+        "Define AuditError enum with thiserror",
+        "Add mod audit; to src/main.rs",
+        "Typecheck passes"
+      ],
       "priority": 1,
-      "title": "Add cargo-chef for dependency caching"
-    },
-    {
-      "acceptanceCriteria": [
-        "Install sccache in builder stage",
-        "Set RUSTC_WRAPPER=sccache environment variable",
-        "Set SCCACHE_DIR=/sccache for cache location",
-        "Add BuildKit cache mount for sccache directory with --mount=type=cache",
-        "sccache stats show cache hits on rebuilds",
-        "Docker build succeeds locally",
-        "Typecheck passes"
-      ],
-      "description": "As a CI system, I want fine-grained compiler caching so that unchanged compilation units are reused across builds.",
-      "id": "US-002",
-      "notes": "Provides fine-grained caching even when dependencies change",
-      "passes": true,
-      "priority": 2,
-      "title": "Add sccache for compiler-level caching"
-    },
-    {
-      "acceptanceCriteria": [
-        "Add --mount=type=cache,target=/usr/local/cargo/registry for registry cache",
-        "Add --mount=type=cache,target=/usr/local/cargo/git for git deps cache",
-        "Use sharing=locked to prevent concurrent access issues",
-        "Dockerfile has `# syntax=docker/dockerfile:1` directive at top",
-        "Crate downloads cached between builds (verify with docker build output)",
-        "Docker build succeeds locally",
-        "Typecheck passes"
-      ],
-      "description": "As a CI system, I want to cache the cargo registry and git dependencies so that crate downloads are not repeated.",
-      "id": "US-003",
-      "notes": "Works with BuildKit which is default in modern Docker",
-      "passes": true,
-      "priority": 3,
-      "title": "Add BuildKit cache mounts for cargo registry"
-    },
-    {
-      "acceptanceCriteria": [
-        "Install zig toolchain in builder stage",
-        "Install cargo-zigbuild via cargo install",
-        "Add x86_64-unknown-linux-musl and aarch64-unknown-linux-musl targets",
-        "Change cargo build to cargo zigbuild --release --target x86_64-unknown-linux-musl --target aarch64-unknown-linux-musl",
-        "Runtime stage uses ARG TARGETPLATFORM to copy correct binary",
-        "Use alpine or musl-based runtime image for static linking",
-        "Multi-arch build succeeds: docker buildx build --platform linux/amd64,linux/arm64",
-        "Typecheck passes"
-      ],
-      "description": "As a CI system, I want to cross-compile for both architectures natively instead of using slow QEMU emulation.",
-      "id": "US-004",
-      "notes": "Eliminates QEMU emulation which causes 40x slowdown",
-      "passes": true,
-      "priority": 4,
-      "title": "Implement cross-compilation with cargo-zigbuild"
-    },
-    {
-      "acceptanceCriteria": [
-        "Remove docker/setup-qemu-action (no longer needed)",
-        "Keep docker/setup-buildx-action for BuildKit",
-        "Configure cache-from and cache-to with type=gha",
-        "Add DOCKER_BUILDKIT=1 environment variable",
-        "Add build timing step that outputs duration",
-        "Workflow file passes YAML lint",
-        "Push to branch triggers successful build"
-      ],
-      "description": "As a maintainer, I want the CI workflow to leverage all caching optimizations for fastest possible builds.",
-      "id": "US-005",
-      "notes": "Workflow is at .github/workflows/docker.yml",
-      "passes": true,
-      "priority": 5,
-      "title": "Update GitHub Actions workflow for optimized builds"
-    },
-    {
-      "acceptanceCriteria": [
-        "Local build completes successfully for both platforms",
-        "CI build completes in under 15 minutes",
-        "Incremental build (source change only) completes in under 5 minutes",
-        "Built image runs correctly: docker run --rm ghcr.io/kcirtapfromspace/ralph --help",
-        "MCP server mode works: docker run -i ghcr.io/kcirtapfromspace/ralph",
-        "Image size is under 100MB",
-        "Document benchmark results in PR description"
-      ],
-      "description": "As a maintainer, I want to verify the optimizations work and measure the improvement.",
-      "id": "US-006",
-      "notes": "Verify all optimizations work together",
-      "passes": true,
-      "priority": 6,
-      "title": "Test and benchmark optimized builds"
-    },
-    {
-      "acceptanceCriteria": [
-        "Update docs/guides/docker-mcp-setup.md with optimized build section",
-        "Document local build commands with BuildKit caching",
-        "Explain cargo-chef, sccache, and zigbuild purpose",
-        "Document cache invalidation scenarios",
-        "Include benchmark comparison (before/after)",
-        "All markdown links valid"
-      ],
-      "description": "As a developer, I want documentation explaining the build optimizations and how to build locally.",
-      "id": "US-007",
-      "notes": "",
       "passes": false,
+      "notes": "Foundation module - all other audit features depend on this"
+    },
+    {
+      "id": "US-002",
+      "title": "Implement file inventory scanner",
+      "description": "As a user, I want the audit to scan the directory structure so I can see what files and folders exist in the codebase.",
+      "acceptanceCriteria": [
+        "Create src/audit/inventory.rs with InventoryScanner struct",
+        "Scan directory tree respecting .gitignore patterns",
+        "Count files by extension",
+        "Identify key files (README, Cargo.toml, package.json, etc.)",
+        "Calculate total lines of code",
+        "Return FileInventory struct with results",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 2,
+      "passes": false,
+      "notes": "Use ignore crate for .gitignore support"
+    },
+    {
+      "id": "US-003",
+      "title": "Implement language detection",
+      "description": "As a user, I want the audit to detect which programming languages are used so I understand the tech stack.",
+      "acceptanceCriteria": [
+        "Create src/audit/languages/mod.rs with LanguageDetector",
+        "Detect Rust (Cargo.toml, .rs files)",
+        "Detect TypeScript/JavaScript (package.json, .ts/.js files)",
+        "Detect Python (pyproject.toml, requirements.txt, .py files)",
+        "Detect Go (go.mod, .go files)",
+        "Return primary and secondary languages with percentages",
+        "Unit tests for each language detection",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Languages detected by manifest files and file extensions"
+    },
+    {
+      "id": "US-004",
+      "title": "Implement dependency parser",
+      "description": "As a user, I want the audit to analyze dependencies so I can see what libraries the project uses.",
+      "acceptanceCriteria": [
+        "Create src/audit/dependencies.rs with DependencyParser",
+        "Parse Cargo.toml for Rust dependencies",
+        "Parse package.json for npm dependencies",
+        "Parse pyproject.toml/requirements.txt for Python dependencies",
+        "Parse go.mod for Go dependencies",
+        "Return DependencyAnalysis with direct and dev dependencies",
+        "Unit tests for each ecosystem parser",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Use toml and serde_json crates for parsing"
+    },
+    {
+      "id": "US-005",
+      "title": "Implement code pattern detection",
+      "description": "As a user, I want the audit to detect code patterns and conventions so agents can follow existing practices.",
+      "acceptanceCriteria": [
+        "Create src/audit/patterns.rs with PatternAnalyzer",
+        "Detect naming conventions (snake_case, camelCase, PascalCase)",
+        "Detect module organization patterns",
+        "Detect error handling patterns",
+        "Detect async patterns if applicable",
+        "Return PatternAnalysis struct",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Use regex for pattern matching in source files"
+    },
+    {
+      "id": "US-006",
+      "title": "Implement architecture analysis",
+      "description": "As a user, I want the audit to identify the architecture pattern so I understand how the codebase is organized.",
+      "acceptanceCriteria": [
+        "Create src/audit/architecture.rs with ArchitectureAnalyzer",
+        "Detect architecture patterns (layered, modular, hexagonal, clean, etc.)",
+        "Identify module/layer boundaries",
+        "Detect coupling between modules",
+        "Return ArchitectureAnalysis struct",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Analyze directory structure and import patterns"
+    },
+    {
+      "id": "US-007",
+      "title": "Implement API inventory",
+      "description": "As a user, I want the audit to discover API endpoints and interfaces so I know what the codebase exposes.",
+      "acceptanceCriteria": [
+        "Create src/audit/api.rs with ApiInventory",
+        "Detect HTTP endpoints (axum, actix, express patterns)",
+        "Detect CLI commands (clap patterns)",
+        "Detect MCP tools if present",
+        "Return ApiAnalysis with endpoints, commands, tools",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
       "priority": 7,
-      "title": "Document build optimization"
+      "passes": false,
+      "notes": "Use regex to find route definitions and clap derives"
+    },
+    {
+      "id": "US-008",
+      "title": "Implement test coverage analysis",
+      "description": "As a user, I want the audit to analyze test coverage so I know which areas lack tests.",
+      "acceptanceCriteria": [
+        "Create src/audit/testing.rs with TestAnalyzer",
+        "Count test files and test functions",
+        "Identify untested modules (modules with no corresponding tests)",
+        "Detect test patterns (unit, integration, e2e)",
+        "Return TestAnalysis struct",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Look for #[test] and #[cfg(test)] in Rust, test/spec files in JS"
+    },
+    {
+      "id": "US-009",
+      "title": "Implement documentation gap detection",
+      "description": "As a user, I want the audit to find missing documentation so I know what needs to be documented.",
+      "acceptanceCriteria": [
+        "Create src/audit/documentation.rs with DocAnalyzer",
+        "Check for README presence and completeness",
+        "Detect missing doc comments on public items (Rust)",
+        "Identify undocumented API endpoints",
+        "Return DocumentationAnalysis with gaps",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Look for /// comments before pub items in Rust"
+    },
+    {
+      "id": "US-010",
+      "title": "Implement architecture gap detector",
+      "description": "As a user, I want the audit to identify architecture gaps so I know what improvements are needed.",
+      "acceptanceCriteria": [
+        "Create src/audit/detectors/mod.rs and architecture_gaps.rs",
+        "Detect missing abstraction layers",
+        "Detect inconsistent module boundaries",
+        "Detect layer violations (e.g., UI calling DB directly)",
+        "Return list of AuditFinding with recommendations",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Analyze import patterns to detect violations"
+    },
+    {
+      "id": "US-011",
+      "title": "Implement opportunity detector",
+      "description": "As a user, I want the audit to suggest complementary features so I know what could be added.",
+      "acceptanceCriteria": [
+        "Create src/audit/detectors/opportunities.rs",
+        "Define opportunity patterns (e.g., has quality gates but no audit command)",
+        "Match patterns against audit results",
+        "Return list of FeatureOpportunity with suggested stories",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Pattern matching based on what exists vs what could exist"
+    },
+    {
+      "id": "US-012",
+      "title": "Implement technical debt detector",
+      "description": "As a user, I want the audit to find technical debt so I can prioritize cleanup.",
+      "acceptanceCriteria": [
+        "Create src/audit/detectors/tech_debt.rs",
+        "Detect TODO/FIXME/HACK comments",
+        "Detect outdated dependencies",
+        "Detect dead code indicators",
+        "Return list of AuditFinding for tech debt items",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Use regex to find TODO comments, compare dep versions"
+    },
+    {
+      "id": "US-013",
+      "title": "Implement JSON report output",
+      "description": "As a user, I want audit results in JSON format so tools can consume them programmatically.",
+      "acceptanceCriteria": [
+        "Create src/audit/output/mod.rs and structured.rs",
+        "Serialize AuditReport to JSON",
+        "Include all sections: metadata, inventory, dependencies, findings, opportunities",
+        "Write to audit.json file",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Use serde_json for serialization"
+    },
+    {
+      "id": "US-014",
+      "title": "Implement markdown report output",
+      "description": "As a user, I want audit results in markdown format so I can read them easily.",
+      "acceptanceCriteria": [
+        "Create src/audit/output/markdown.rs",
+        "Generate executive summary with key metrics",
+        "Format findings with severity badges",
+        "Format opportunities with complexity indicators",
+        "Include table of contents",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Generate GitHub-flavored markdown"
+    },
+    {
+      "id": "US-015",
+      "title": "Implement agent context output",
+      "description": "As a developer, I want audit patterns written to progress.txt so agents can follow existing conventions.",
+      "acceptanceCriteria": [
+        "Create src/audit/output/agent_context.rs",
+        "Generate Codebase Patterns section for progress.txt",
+        "Include naming conventions, architecture pattern, key conventions",
+        "Append to existing progress.txt (don't overwrite)",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Format matches existing progress.txt pattern"
+    },
+    {
+      "id": "US-016",
+      "title": "Add audit CLI subcommand",
+      "description": "As a user, I want to run ralph audit from the command line so I can audit any codebase.",
+      "acceptanceCriteria": [
+        "Add Audit variant to Commands enum in src/main.rs",
+        "Support -d, --dir for target directory",
+        "Support -f, --format for output format (json, markdown, context, all)",
+        "Support -o, --output for output file",
+        "Support --profile for quality profile",
+        "Support --smart for smart Q&A mode",
+        "Support --no-interactive to skip Q&A",
+        "Support --generate-prd to auto-generate PRD",
+        "Print help text with -h, --help",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Follow existing Commands pattern in main.rs"
+    },
+    {
+      "id": "US-017",
+      "title": "Implement interactive Q&A flow",
+      "description": "As a user, I want the audit to ask me clarifying questions so it better understands my goals.",
+      "acceptanceCriteria": [
+        "Create src/audit/interactive.rs with Q&A logic",
+        "Ask 3-5 questions with A/B/C/D options",
+        "Questions include: project purpose, priorities, target users",
+        "Parse user responses (e.g., 1A, 2C, 3B)",
+        "Refine findings based on answers",
+        "Skip questions in --no-interactive mode",
+        "In --smart mode, only ask when confidence < threshold",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Use console crate for terminal input"
+    },
+    {
+      "id": "US-018",
+      "title": "Implement audit-to-PRD generation",
+      "description": "As a user, I want to generate a PRD from audit findings so I can start improving the codebase.",
+      "acceptanceCriteria": [
+        "Create src/audit/prd_generator.rs",
+        "Convert findings to user stories",
+        "Convert opportunities to user stories",
+        "Generate PRD markdown following existing /prd skill format",
+        "Save to tasks/prd-<project>-improvements.md",
+        "Prompt user before generating (unless --generate-prd flag)",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Follow PRD format from skills/prd/SKILL.md"
+    },
+    {
+      "id": "US-019",
+      "title": "Implement PRD-to-prd.json conversion",
+      "description": "As a user, I want the audit to convert the generated PRD to prd.json so I can run ralph immediately.",
+      "acceptanceCriteria": [
+        "Create src/audit/prd_converter.rs",
+        "Parse generated PRD markdown",
+        "Extract user stories and acceptance criteria",
+        "Generate valid prd.json with project, branchName, userStories",
+        "Set all stories to passes: false",
+        "Save to prd.json in working directory",
+        "Prompt user before converting",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Follow prd.json format from skills/ralph/SKILL.md"
+    },
+    {
+      "id": "US-020",
+      "title": "Create /audit skill for Claude Code",
+      "description": "As a user, I want to type /audit in Claude Code so I can run an interactive audit.",
+      "acceptanceCriteria": [
+        "Create skills/audit/SKILL.md with full skill instructions",
+        "Define interactive Q&A flow matching CLI behavior",
+        "Include instructions for presenting findings",
+        "Include instructions for generating PRD",
+        "Include instructions for converting to prd.json",
+        "Skill follows existing /prd and /ralph skill patterns"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Reference skills/prd/SKILL.md and skills/ralph/SKILL.md as templates"
+    },
+    {
+      "id": "US-021",
+      "title": "Implement start_audit MCP tool",
+      "description": "As an AI agent, I want to start an audit via MCP so I can analyze codebases programmatically.",
+      "acceptanceCriteria": [
+        "Create src/mcp/tools/audit.rs with start_audit tool",
+        "Accept path parameter (optional, defaults to PRD directory)",
+        "Accept sections parameter to limit analysis scope",
+        "Accept format parameter for output format",
+        "Return audit ID for status checking",
+        "Register tool in src/mcp/server.rs",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Follow pattern from existing MCP tools in src/mcp/tools/"
+    },
+    {
+      "id": "US-022",
+      "title": "Implement get_audit_status MCP tool",
+      "description": "As an AI agent, I want to check audit progress so I know when it's complete.",
+      "acceptanceCriteria": [
+        "Add get_audit_status tool to src/mcp/tools/audit.rs",
+        "Accept audit ID parameter",
+        "Return status: pending, running, completed, failed",
+        "Return progress percentage if running",
+        "Register tool in src/mcp/server.rs",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Status tracking similar to story execution state"
+    },
+    {
+      "id": "US-023",
+      "title": "Implement get_audit_results MCP tool",
+      "description": "As an AI agent, I want to retrieve audit results so I can present findings to the user.",
+      "acceptanceCriteria": [
+        "Add get_audit_results tool to src/mcp/tools/audit.rs",
+        "Accept audit ID parameter",
+        "Return full AuditReport as JSON",
+        "Return error if audit not complete",
+        "Register tool in src/mcp/server.rs",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Serialize AuditReport to JSON for MCP response"
+    },
+    {
+      "id": "US-024",
+      "title": "Implement generate_prd_from_audit MCP tool",
+      "description": "As an AI agent, I want to generate a PRD from audit results so users can start improving their codebase.",
+      "acceptanceCriteria": [
+        "Add generate_prd_from_audit tool to src/mcp/tools/audit.rs",
+        "Accept audit ID parameter",
+        "Accept optional user answers from Q&A",
+        "Generate PRD markdown and prd.json",
+        "Return paths to generated files",
+        "Register tool in src/mcp/server.rs",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Reuse prd_generator and prd_converter modules"
+    },
+    {
+      "id": "US-025",
+      "title": "Add audit settings to quality profiles",
+      "description": "As a user, I want to configure audit behavior via quality profiles so I can customize thresholds.",
+      "acceptanceCriteria": [
+        "Add [profiles.*.audit] section to quality/ralph-quality.toml",
+        "Add enabled boolean",
+        "Add max_critical_findings, max_high_findings thresholds",
+        "Add section toggles (structure, patterns, api, deps, tests, docs, arch)",
+        "Load audit config in quality profile loader",
+        "Unit tests pass",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": false,
+      "notes": "Follow existing profile pattern in src/quality/profiles.rs"
+    },
+    {
+      "id": "US-026",
+      "title": "Integration test on Ralph's own codebase",
+      "description": "As a developer, I want to run the audit on Ralph itself so I can verify it works end-to-end.",
+      "acceptanceCriteria": [
+        "Create integration test that runs full audit on ralph codebase",
+        "Verify all analysis sections produce results",
+        "Verify JSON output is valid and parseable",
+        "Verify markdown output is well-formed",
+        "Verify findings are reasonable for Ralph codebase",
+        "Test passes"
+      ],
+      "priority": 26,
+      "passes": false,
+      "notes": "Use tests/ directory for integration tests"
     }
   ]
 }
