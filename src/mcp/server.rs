@@ -9,10 +9,11 @@ use crate::mcp::resources::{
 };
 use crate::mcp::tools::audit::{
     all_sections, create_error_response as create_audit_error_response,
-    create_status_error_response, create_status_success_response,
-    create_success_response as create_audit_success_response, generate_audit_id,
-    resolve_audit_path, AuditOutputFormat, AuditState, GetAuditStatusError, GetAuditStatusRequest,
-    StartAuditError, StartAuditRequest,
+    create_results_error_response, create_results_success_response, create_status_error_response,
+    create_status_success_response, create_success_response as create_audit_success_response,
+    generate_audit_id, get_audit_status_from_state, resolve_audit_path, AuditOutputFormat,
+    AuditState, AuditStatus, GetAuditResultsError, GetAuditResultsRequest, GetAuditStatusError,
+    GetAuditStatusRequest, StartAuditError, StartAuditRequest,
 };
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::get_status::{GetStatusRequest, GetStatusResponse};
@@ -884,6 +885,7 @@ impl RalphMcpServer {
             completed: false,
             error: None,
             progress: 0,
+            report: None,
         };
 
         // Store the audit state
@@ -946,6 +948,108 @@ impl RalphMcpServer {
             None => {
                 let error = GetAuditStatusError::AuditNotFound(req.audit_id);
                 let response = create_status_error_response(&error);
+                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                })
+            }
+        }
+    }
+
+    /// Get the results of a completed codebase audit.
+    ///
+    /// This tool returns the full audit report for a completed audit.
+    /// The audit must be complete before results can be retrieved.
+    ///
+    /// # Parameters
+    ///
+    /// * `audit_id` - The audit ID returned from start_audit.
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether the request was successful
+    /// - `audit_id`: The audit ID
+    /// - `report`: The full AuditReport object (if completed)
+    /// - `error`: Error message if failed
+    /// - `message`: Status message
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The audit ID is not found
+    /// - The audit is not yet complete (pending or running)
+    /// - The audit failed
+    #[tool(
+        name = "get_audit_results",
+        description = "Get the results of a completed codebase audit. Returns the full AuditReport as JSON. Returns an error if the audit is not complete."
+    )]
+    pub async fn get_audit_results(
+        &self,
+        Parameters(req): Parameters<GetAuditResultsRequest>,
+    ) -> String {
+        // Get the audit state from server state
+        let audit_state = {
+            let state = self.state.read().await;
+            state.audit_states.get(&req.audit_id).cloned()
+        };
+
+        match audit_state {
+            Some(state) => {
+                let status = get_audit_status_from_state(&state);
+
+                match status {
+                    AuditStatus::Completed => {
+                        // Return the report if available
+                        match state.report {
+                            Some(report) => {
+                                let response =
+                                    create_results_success_response(&state.audit_id, report);
+                                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                                    format!(
+                                        "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                        e
+                                    )
+                                })
+                            }
+                            None => {
+                                // Audit completed but no report (shouldn't happen normally)
+                                let error = GetAuditResultsError::AuditFailed(
+                                    req.audit_id,
+                                    "Audit completed but no report available".to_string(),
+                                );
+                                let response = create_results_error_response(&error);
+                                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                                    format!(
+                                        "{{\"error\": \"Failed to serialize response: {}\"}}",
+                                        e
+                                    )
+                                })
+                            }
+                        }
+                    }
+                    AuditStatus::Failed => {
+                        let error = GetAuditResultsError::AuditFailed(
+                            req.audit_id,
+                            state.error.unwrap_or_else(|| "Unknown error".to_string()),
+                        );
+                        let response = create_results_error_response(&error);
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                        })
+                    }
+                    _ => {
+                        // Audit is pending or running
+                        let error = GetAuditResultsError::AuditNotComplete(req.audit_id, status);
+                        let response = create_results_error_response(&error);
+                        serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                            format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                        })
+                    }
+                }
+            }
+            None => {
+                let error = GetAuditResultsError::AuditNotFound(req.audit_id);
+                let response = create_results_error_response(&error);
                 serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
                     format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
                 })

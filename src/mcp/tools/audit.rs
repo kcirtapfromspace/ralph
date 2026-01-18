@@ -141,6 +141,8 @@ pub struct AuditState {
     pub error: Option<String>,
     /// Progress percentage (0-100)
     pub progress: u8,
+    /// The audit report (populated when completed)
+    pub report: Option<crate::audit::AuditReport>,
 }
 
 /// Audit status values for get_audit_status.
@@ -207,6 +209,64 @@ pub struct GetAuditStatusResponse {
 pub enum GetAuditStatusError {
     /// Audit ID not found
     AuditNotFound(String),
+}
+
+/// Request parameters for the get_audit_results tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct GetAuditResultsRequest {
+    /// The audit ID to get results for.
+    #[schemars(description = "The audit ID returned from start_audit")]
+    pub audit_id: String,
+}
+
+/// Response from the get_audit_results tool.
+#[derive(Debug, Serialize)]
+pub struct GetAuditResultsResponse {
+    /// Whether the request was successful
+    pub success: bool,
+
+    /// The audit ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audit_id: Option<String>,
+
+    /// The full audit report (if completed)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub report: Option<crate::audit::AuditReport>,
+
+    /// Error message if request failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+
+    /// Message describing the result
+    pub message: String,
+}
+
+/// Error types for get_audit_results operations.
+#[derive(Debug)]
+#[allow(clippy::enum_variant_names)]
+pub enum GetAuditResultsError {
+    /// Audit ID not found
+    AuditNotFound(String),
+    /// Audit is not yet complete
+    AuditNotComplete(String, AuditStatus),
+    /// Audit failed
+    AuditFailed(String, String),
+}
+
+impl std::fmt::Display for GetAuditResultsError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GetAuditResultsError::AuditNotFound(id) => {
+                write!(f, "Audit not found: {}", id)
+            }
+            GetAuditResultsError::AuditNotComplete(id, status) => {
+                write!(f, "Audit '{}' is not complete (status: {})", id, status)
+            }
+            GetAuditResultsError::AuditFailed(id, error) => {
+                write!(f, "Audit '{}' failed: {}", id, error)
+            }
+        }
+    }
 }
 
 impl std::fmt::Display for GetAuditStatusError {
@@ -417,6 +477,31 @@ pub fn create_status_error_response(error: &GetAuditStatusError) -> GetAuditStat
     }
 }
 
+/// Create a success response for get_audit_results.
+pub fn create_results_success_response(
+    audit_id: &str,
+    report: crate::audit::AuditReport,
+) -> GetAuditResultsResponse {
+    GetAuditResultsResponse {
+        success: true,
+        audit_id: Some(audit_id.to_string()),
+        report: Some(report),
+        error: None,
+        message: format!("Audit '{}' results retrieved successfully.", audit_id),
+    }
+}
+
+/// Create an error response for get_audit_results.
+pub fn create_results_error_response(error: &GetAuditResultsError) -> GetAuditResultsResponse {
+    GetAuditResultsResponse {
+        success: false,
+        audit_id: None,
+        report: None,
+        error: Some(error.to_string()),
+        message: error.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -549,6 +634,7 @@ mod tests {
             completed: false,
             error: None,
             progress: 0,
+            report: None,
         };
 
         let response = create_success_response(&state);
@@ -665,6 +751,7 @@ mod tests {
             completed: false,
             error: None,
             progress: 50,
+            report: None,
         };
 
         let cloned = state.clone();
@@ -692,6 +779,7 @@ mod tests {
             completed: false,
             error: None,
             progress: 0,
+            report: None,
         };
 
         assert_eq!(get_audit_status_from_state(&state), AuditStatus::Pending);
@@ -708,6 +796,7 @@ mod tests {
             completed: false,
             error: None,
             progress: 50,
+            report: None,
         };
 
         assert_eq!(get_audit_status_from_state(&state), AuditStatus::Running);
@@ -724,6 +813,7 @@ mod tests {
             completed: true,
             error: None,
             progress: 100,
+            report: None,
         };
 
         assert_eq!(get_audit_status_from_state(&state), AuditStatus::Completed);
@@ -740,6 +830,7 @@ mod tests {
             completed: false,
             error: Some("Test error".to_string()),
             progress: 25,
+            report: None,
         };
 
         assert_eq!(get_audit_status_from_state(&state), AuditStatus::Failed);
@@ -756,6 +847,7 @@ mod tests {
             completed: false,
             error: None,
             progress: 50,
+            report: None,
         };
 
         let response = create_status_success_response(&state);
@@ -780,6 +872,7 @@ mod tests {
             completed: true,
             error: None,
             progress: 100,
+            report: None,
         };
 
         let response = create_status_success_response(&state);
@@ -801,6 +894,7 @@ mod tests {
             completed: false,
             error: Some("Something went wrong".to_string()),
             progress: 25,
+            report: None,
         };
 
         let response = create_status_success_response(&state);
@@ -875,5 +969,119 @@ mod tests {
         assert!(!json.contains("status"));
         assert!(!json.contains("progress"));
         assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_get_audit_results_request_deserialization() {
+        let json = r#"{"audit_id": "audit-123-456"}"#;
+        let req: GetAuditResultsRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(req.audit_id, "audit-123-456");
+    }
+
+    #[test]
+    fn test_get_audit_results_error_display_not_found() {
+        let error = GetAuditResultsError::AuditNotFound("audit-123".to_string());
+        assert!(error.to_string().contains("Audit not found"));
+        assert!(error.to_string().contains("audit-123"));
+    }
+
+    #[test]
+    fn test_get_audit_results_error_display_not_complete() {
+        let error =
+            GetAuditResultsError::AuditNotComplete("audit-123".to_string(), AuditStatus::Running);
+        assert!(error.to_string().contains("not complete"));
+        assert!(error.to_string().contains("audit-123"));
+        assert!(error.to_string().contains("running"));
+    }
+
+    #[test]
+    fn test_get_audit_results_error_display_failed() {
+        let error =
+            GetAuditResultsError::AuditFailed("audit-123".to_string(), "Test error".to_string());
+        assert!(error.to_string().contains("failed"));
+        assert!(error.to_string().contains("audit-123"));
+        assert!(error.to_string().contains("Test error"));
+    }
+
+    #[test]
+    fn test_create_results_success_response() {
+        let report = crate::audit::AuditReport::new(PathBuf::from("/test"));
+        let response = create_results_success_response("audit-123", report);
+
+        assert!(response.success);
+        assert_eq!(response.audit_id, Some("audit-123".to_string()));
+        assert!(response.report.is_some());
+        assert!(response.error.is_none());
+        assert!(response.message.contains("audit-123"));
+        assert!(response.message.contains("successfully"));
+    }
+
+    #[test]
+    fn test_create_results_error_response() {
+        let error = GetAuditResultsError::AuditNotFound("audit-999".to_string());
+        let response = create_results_error_response(&error);
+
+        assert!(!response.success);
+        assert!(response.audit_id.is_none());
+        assert!(response.report.is_none());
+        assert!(response.error.is_some());
+        assert!(response.message.contains("not found"));
+        assert!(response.message.contains("audit-999"));
+    }
+
+    #[test]
+    fn test_get_audit_results_response_serialization() {
+        let response = GetAuditResultsResponse {
+            success: true,
+            audit_id: Some("audit-123".to_string()),
+            report: None, // Skipping report to simplify test
+            error: None,
+            message: "Success".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"audit_id\":\"audit-123\""));
+        assert!(!json.contains("report")); // None fields should be skipped
+        assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_get_audit_results_response_none_fields_not_serialized() {
+        let response = GetAuditResultsResponse {
+            success: false,
+            audit_id: None,
+            report: None,
+            error: None,
+            message: "Error".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("audit_id"));
+        assert!(!json.contains("report"));
+        assert!(!json.contains("error"));
+    }
+
+    #[test]
+    fn test_audit_state_with_report() {
+        let report = crate::audit::AuditReport::new(PathBuf::from("/test"));
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: true,
+            error: None,
+            progress: 100,
+            report: Some(report),
+        };
+
+        assert!(state.report.is_some());
+        assert_eq!(
+            state.report.as_ref().unwrap().metadata.project_root,
+            PathBuf::from("/test")
+        );
     }
 }
