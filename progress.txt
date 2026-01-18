@@ -115,3 +115,21 @@ Started: Sat Jan 17 21:41:00 MST 2026
   - render() only shows activity beneath gates with GateProgress::Running status
   - render() uses 4-space indent for activity (2 for gate, 2 more for activity beneath)
 ---
+
+## 2026-01-17 - US-008
+- What was implemented: Integrated iteration view with executor for progress callbacks
+- Files changed:
+  - src/mcp/executor.rs: New module with StoryExecutor, IterationDisplay, and event types
+  - src/mcp/mod.rs: Exported executor module and public types
+- **Learnings for future iterations:**
+  - StoryExecutor orchestrates the iteration loop with configurable max_iterations
+  - GateProgressEvent enum: Started, Completed, Activity for fine-grained progress tracking
+  - ExecutionEvent enum: IterationStarting, GateProgress, IterationCompleted, ExecutionFinished
+  - on_event() callback accepts Box<dyn FnMut(ExecutionEvent) + Send> for async compatibility
+  - on_gate_progress() is convenience wrapper filtering to just GateProgress events
+  - IterationDisplay manages UI: show_iteration_preview(), start_iteration(), update_gate(), finish_iteration()
+  - run_quality_gates() emits Started before and Completed after each gate check
+  - Profile configuration determines which gates run (coverage, lint, format, security_audit)
+  - ExecutorConfig bundles max_iterations, profile, show_ui flag, and theme
+  - Tests verify callback wiring and display state management
+---
