@@ -1,7 +1,10 @@
 # syntax=docker/dockerfile:1
 
-# Ralph MCP Server - Multi-stage build for minimal image size
+# Ralph MCP Server - Optimized multi-stage build with cargo-chef caching
 # This Dockerfile builds the Ralph MCP server for use with Docker MCP toolkit
+#
+# Build Optimization: Uses cargo-chef to cache Rust dependencies between builds.
+# Only the final cargo build runs when source code changes - dependencies are cached.
 #
 # NOTE: This is a deployment repository. The Dockerfile clones the Ralph source
 # from GitHub during build. Source code lives at: https://github.com/kcirtapfromspace/ralph
@@ -23,33 +26,40 @@
 ARG VERSION=dev
 ARG COMMIT_SHA=unknown
 
-# Stage 1: Build the Rust binary
-# Using Rust 1.85+ for Edition 2024 support (required by rmcp crate)
-FROM rust:1.85-slim-bookworm AS builder
+# Stage 1: Chef base with all build dependencies
+FROM rust:1.85-slim-bookworm AS chef
 
-# Install build dependencies
+# Install ALL build dependencies in the base stage so they're available for cargo-chef
 RUN apt-get update && apt-get install -y \
     pkg-config \
     libssl-dev \
     git \
     && rm -rf /var/lib/apt/lists/*
 
+RUN cargo install cargo-chef
 WORKDIR /app
 
-# Clone the Ralph source repository
-# This Dockerfile is for deployment - source lives in the main ralph repo
+# Stage 2: Generate the dependency recipe
+FROM chef AS planner
 ARG RALPH_REPO=https://github.com/kcirtapfromspace/ralph.git
 ARG RALPH_REF=main
 RUN git clone --depth 1 --branch ${RALPH_REF} ${RALPH_REPO} .
+RUN cargo chef prepare --recipe-path recipe.json
 
-# Build the release binary with BuildKit cache mounts for faster rebuilds
-RUN --mount=type=cache,target=/usr/local/cargo/registry \
-    --mount=type=cache,target=/usr/local/cargo/git \
-    --mount=type=cache,target=/app/target \
-    cargo build --release --bin ralph && \
-    cp target/release/ralph /ralph
+# Stage 3: Build dependencies (this layer is cached)
+FROM chef AS builder
+COPY --from=planner /app/recipe.json recipe.json
 
-# Stage 2: Create minimal runtime image
+# Build dependencies - this is cached unless Cargo.toml/Cargo.lock change
+RUN cargo chef cook --release --recipe-path recipe.json
+
+# Now clone and build the actual application
+ARG RALPH_REPO=https://github.com/kcirtapfromspace/ralph.git
+ARG RALPH_REF=main
+RUN git clone --depth 1 --branch ${RALPH_REF} ${RALPH_REPO} .
+RUN cargo build --release --bin ralph
+
+# Stage 4: Create minimal runtime image
 FROM debian:bookworm-slim AS runtime
 
 # Re-declare build args in runtime stage (required for multi-stage builds)
@@ -66,7 +76,7 @@ RUN apt-get update && apt-get install -y \
 WORKDIR /app
 
 # Copy the built binary
-COPY --from=builder /ralph /usr/local/bin/ralph
+COPY --from=builder /app/target/release/ralph /usr/local/bin/ralph
 
 # Copy quality configuration (needed for quality checks)
 COPY --from=builder /app/quality ./quality
