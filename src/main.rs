@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 
@@ -57,21 +57,9 @@ struct Cli {
     #[arg(long, short)]
     quiet: bool,
 
-    /// Verbose output - show streaming and expanded details
-    #[arg(long, short, conflicts_with = "quiet")]
-    verbose: bool,
-
-    /// Very verbose output - show all internal details (use -vv for shorthand)
-    #[arg(long, conflicts_with = "quiet")]
-    very_verbose: bool,
-
-    /// Show streaming output (under the hood view)
-    #[arg(long)]
-    show_streaming: bool,
-
-    /// Expand detailed sections by default
-    #[arg(long)]
-    expand_details: bool,
+    /// Increase verbosity (-v, -vv, -vvv)
+    #[arg(long, short, action = ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
 
     /// Print help information with styled output
     #[arg(long, short)]
@@ -138,22 +126,13 @@ enum Commands {
 
 /// Build display options from CLI arguments
 fn build_display_options(cli: &Cli) -> DisplayOptions {
-    // Determine verbosity level
-    let verbosity = if cli.very_verbose {
-        2
-    } else if cli.verbose {
-        1
-    } else {
-        0
-    };
-
     DisplayOptions::new()
         .with_ui_mode(cli.ui.into())
         .with_color(!cli.no_color)
         .with_quiet(cli.quiet)
-        .with_verbosity(verbosity)
-        .with_streaming(cli.show_streaming || cli.verbose || cli.very_verbose)
-        .with_expand_details(cli.expand_details || cli.verbose || cli.very_verbose)
+        .with_verbosity(cli.verbose)
+        .with_streaming(true) // Streaming is now default
+        .with_expand_details(cli.verbose >= 1) // Expand details at -v or higher
 }
 
 #[tokio::main]

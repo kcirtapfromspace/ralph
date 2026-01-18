@@ -13,6 +13,7 @@ mod help;
 mod image_to_ansi;
 mod interrupt;
 mod iteration_view;
+mod keyboard;
 mod kitty_graphics;
 mod mascot;
 mod quality_gates;
@@ -24,6 +25,10 @@ mod tui_runner;
 
 pub use collapsible::{
     CollapsibleIterationSummary, CollapsibleSection, CollapsibleState, StreamingDisplayOptions,
+};
+pub use keyboard::{
+    render_compact_hint, render_toggle_hint, KeyBindings, KeyboardListener, ListenerHandle,
+    ToggleEvent, ToggleState,
 };
 pub use colors::{
     active_text, ansi, blinking_text, completed_text, muted_text, primary_text, StyledText, Theme,
