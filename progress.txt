@@ -91,3 +91,14 @@ Feature: Parallel Story Execution
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 11:00 - US-008
+- **What was implemented**: Implement topological sort in DependencyGraph
+- **Files changed**:
+  - rd.json
+  - rogress.txt
+  - rc/parallel/dependency.rs
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---

@@ -174,6 +174,43 @@ impl DependencyGraph {
         }
     }
 
+    /// Returns stories that are ready to execute.
+    ///
+    /// A story is ready when:
+    /// - It has not already passed (`passes == false`)
+    /// - It is not in the `completed` set
+    /// - All its dependencies are in the `completed` set
+    ///
+    /// # Arguments
+    ///
+    /// * `completed` - Set of story IDs that have been completed in this execution
+    ///
+    /// # Returns
+    ///
+    /// A vector of references to `StoryNode`s that are ready to execute
+    pub fn get_ready_stories(
+        &self,
+        completed: &std::collections::HashSet<String>,
+    ) -> Vec<&StoryNode> {
+        self.graph
+            .node_indices()
+            .filter_map(|idx| {
+                let node = &self.graph[idx];
+                // Skip if already passed or already completed
+                if node.passes || completed.contains(&node.id) {
+                    return None;
+                }
+                // Check if all dependencies are completed
+                let all_deps_completed = node.depends_on.iter().all(|dep| completed.contains(dep));
+                if all_deps_completed {
+                    Some(node)
+                } else {
+                    None
+                }
+            })
+            .collect()
+    }
+
     /// Finds all story IDs that participate in cycles.
     ///
     /// Uses a simple approach: a node is in a cycle if it can reach itself
@@ -387,5 +424,98 @@ mod tests {
         let result = graph.topological_order();
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
+    }
+
+    /// Helper function to create a test story with passes flag
+    fn make_story_with_passes(id: &str, depends_on: Vec<&str>, passes: bool) -> PrdUserStory {
+        PrdUserStory {
+            id: id.to_string(),
+            title: format!("Story {}", id),
+            description: String::new(),
+            acceptance_criteria: vec![],
+            priority: 1,
+            passes,
+            depends_on: depends_on.into_iter().map(String::from).collect(),
+            target_files: vec![],
+        }
+    }
+
+    #[test]
+    fn test_get_ready_stories_partially_completed() {
+        use std::collections::HashSet;
+
+        // Create a dependency graph:
+        //   US-001 (no deps, passes=true - already passed)
+        //   US-002 (depends on US-001)
+        //   US-003 (depends on US-001)
+        //   US-004 (depends on US-002 and US-003)
+        //   US-005 (no deps)
+        let stories = vec![
+            make_story_with_passes("US-001", vec![], true), // Already passed
+            make_story_with_passes("US-002", vec!["US-001"], false),
+            make_story_with_passes("US-003", vec!["US-001"], false),
+            make_story_with_passes("US-004", vec!["US-002", "US-003"], false),
+            make_story_with_passes("US-005", vec![], false), // No deps
+        ];
+
+        let graph = DependencyGraph::from_stories(&stories);
+
+        // Scenario 1: Nothing completed yet
+        // - US-001 passes=true, so not ready
+        // - US-002 depends on US-001, but US-001 not in completed set -> not ready
+        // - US-003 depends on US-001, but US-001 not in completed set -> not ready
+        // - US-004 depends on US-002, US-003 -> not ready
+        // - US-005 has no deps and passes=false -> ready
+        let completed: HashSet<String> = HashSet::new();
+        let ready = graph.get_ready_stories(&completed);
+        let ready_ids: Vec<&str> = ready.iter().map(|n| n.id.as_str()).collect();
+        assert_eq!(ready_ids, vec!["US-005"]);
+
+        // Scenario 2: US-001 completed (but it already passed, so it's in completed for other stories)
+        // - US-002 depends on US-001 which is now completed -> ready
+        // - US-003 depends on US-001 which is now completed -> ready
+        // - US-004 deps not all completed -> not ready
+        // - US-005 no deps -> ready
+        let mut completed: HashSet<String> = HashSet::new();
+        completed.insert("US-001".to_string());
+        let ready = graph.get_ready_stories(&completed);
+        let mut ready_ids: Vec<&str> = ready.iter().map(|n| n.id.as_str()).collect();
+        ready_ids.sort();
+        assert_eq!(ready_ids, vec!["US-002", "US-003", "US-005"]);
+
+        // Scenario 3: US-001 and US-002 completed
+        // - US-003 -> ready (US-001 completed)
+        // - US-004 deps are US-002 (completed) and US-003 (not completed) -> not ready
+        // - US-005 -> ready
+        let mut completed: HashSet<String> = HashSet::new();
+        completed.insert("US-001".to_string());
+        completed.insert("US-002".to_string());
+        let ready = graph.get_ready_stories(&completed);
+        let mut ready_ids: Vec<&str> = ready.iter().map(|n| n.id.as_str()).collect();
+        ready_ids.sort();
+        assert_eq!(ready_ids, vec!["US-003", "US-005"]);
+
+        // Scenario 4: US-001, US-002, US-003 completed
+        // - US-004 -> ready (all deps completed)
+        // - US-005 -> ready
+        let mut completed: HashSet<String> = HashSet::new();
+        completed.insert("US-001".to_string());
+        completed.insert("US-002".to_string());
+        completed.insert("US-003".to_string());
+        let ready = graph.get_ready_stories(&completed);
+        let mut ready_ids: Vec<&str> = ready.iter().map(|n| n.id.as_str()).collect();
+        ready_ids.sort();
+        assert_eq!(ready_ids, vec!["US-004", "US-005"]);
+
+        // Scenario 5: All completed
+        // - No stories ready (all in completed set)
+        let mut completed: HashSet<String> = HashSet::new();
+        completed.insert("US-001".to_string());
+        completed.insert("US-002".to_string());
+        completed.insert("US-003".to_string());
+        completed.insert("US-004".to_string());
+        completed.insert("US-005".to_string());
+        let ready = graph.get_ready_stories(&completed);
+        assert!(ready.is_empty());
     }
 }
