@@ -237,7 +237,7 @@
       "description": "As a user, I want audit results in markdown format so I can read them easily.",
       "id": "US-014",
       "notes": "Generate GitHub-flavored markdown",
-      "passes": false,
+      "passes": true,
       "priority": 14,
       "title": "Implement markdown report output"
     },
