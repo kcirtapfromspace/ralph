@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 mod integrations;
 mod mcp;
+mod parallel;
 mod quality;
 mod runner;
 mod ui;

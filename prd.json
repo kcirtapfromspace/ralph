@@ -51,7 +51,7 @@
       "description": "As a PRD author, I want to specify which files a story will modify for conflict detection.",
       "id": "US-003",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 3,
       "targetFiles": [
         "src/mcp/tools/load_prd.rs"

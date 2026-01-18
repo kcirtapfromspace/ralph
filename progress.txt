@@ -35,3 +35,14 @@ Feature: Parallel Story Execution
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 10:52 - US-003
+- **What was implemented**: Extend PrdUserStory with targetFiles field
+- **Files changed**:
+  - rd.json
+  - rogress.txt
+  - rc/mcp/tools/load_prd.rs
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---
