@@ -5,7 +5,6 @@
 
 #![allow(dead_code)]
 
-use std::io::{self, Read};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::thread;
