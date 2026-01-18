@@ -292,7 +292,7 @@
       "description": "As a user, I want the audit to ask me clarifying questions so it better understands my goals.",
       "id": "US-017",
       "notes": "Use console crate for terminal input",
-      "passes": false,
+      "passes": true,
       "priority": 17,
       "title": "Implement interactive Q&A flow"
     },

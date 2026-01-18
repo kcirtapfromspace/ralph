@@ -20,6 +20,7 @@ pub mod inventory;
 pub mod languages;
 pub mod output;
 pub mod patterns;
+pub mod prd_generator;
 pub mod testing;
 
 // Re-exports for convenience
@@ -67,6 +68,10 @@ pub use output::{
 pub use patterns::{
     AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,
     PatternAnalysis, PatternAnalyzer,
+};
+#[allow(unused_imports)]
+pub use prd_generator::{
+    GeneratedUserStory, PrdGenerationResult, PrdGenerator, PrdGeneratorConfig, StorySource,
 };
 #[allow(unused_imports)]
 pub use testing::{

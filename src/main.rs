@@ -407,11 +407,11 @@ async fn run_audit(
     _profile: String,
     _smart: bool,
     _no_interactive: bool,
-    _generate_prd: bool,
+    generate_prd: bool,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use audit::{
         AgentContext, AgentContextWriter, AuditReport, InventoryScanner, JsonReportWriter,
-        MarkdownReportWriter,
+        MarkdownReportWriter, PrdGenerator, PrdGeneratorConfig,
     };
     use std::time::Instant;
 
@@ -436,7 +436,7 @@ async fn run_audit(
     let mut report = AuditReport::new(target_dir.clone());
 
     // Run inventory scan
-    let scanner = InventoryScanner::new(target_dir);
+    let scanner = InventoryScanner::new(target_dir.clone());
     report.inventory = scanner.scan()?;
 
     // Update metadata with duration
@@ -498,7 +498,55 @@ async fn run_audit(
         eprintln!("Audit completed in {}ms", start_time.elapsed().as_millis());
     }
 
+    // Handle PRD generation
+    if generate_prd || should_prompt_for_prd(&report, cli.quiet) {
+        let prd_config = PrdGeneratorConfig::new()
+            .with_skip_prompt(generate_prd) // Skip prompt if --generate-prd flag is set
+            .with_output_dir(target_dir.join("tasks"));
+
+        let generator = PrdGenerator::with_config(prd_config);
+
+        // Prompt user unless --generate-prd flag is set
+        let should_generate = if generate_prd {
+            true
+        } else {
+            generator.prompt_user_confirmation()?
+        };
+
+        if should_generate {
+            let result = generator.generate(&report)?;
+            if !cli.quiet {
+                eprintln!(
+                    "Generated PRD with {} user stories at: {}",
+                    result.story_count,
+                    result.prd_path.display()
+                );
+                eprintln!(
+                    "  - {} from findings, {} from opportunities",
+                    result.findings_converted, result.opportunities_converted
+                );
+            }
+        }
+    }
+
     Ok(())
+}
+
+/// Determine if we should prompt the user about PRD generation
+fn should_prompt_for_prd(report: &audit::AuditReport, quiet: bool) -> bool {
+    // Don't prompt in quiet mode
+    if quiet {
+        return false;
+    }
+
+    // Prompt if there are actionable findings or opportunities
+    let has_findings = report
+        .findings
+        .iter()
+        .any(|f| f.severity >= audit::Severity::Medium);
+    let has_opportunities = !report.opportunities.is_empty();
+
+    has_findings || has_opportunities
 }
 
 /// Write output to file or stdout
