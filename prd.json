@@ -137,7 +137,7 @@
       "description": "As a developer, I need to detect circular dependencies which are invalid.",
       "id": "US-007",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 7,
       "targetFiles": [
         "src/parallel/dependency.rs"

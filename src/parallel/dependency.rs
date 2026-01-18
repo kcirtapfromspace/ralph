@@ -1,7 +1,7 @@
 //! Dependency graph construction and analysis
 
 use crate::mcp::tools::load_prd::PrdUserStory;
-use petgraph::algo::is_cyclic_directed;
+use petgraph::algo::{is_cyclic_directed, toposort};
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
 use std::collections::HashMap;
@@ -144,6 +144,36 @@ impl DependencyGraph {
         }
     }
 
+    /// Returns story IDs in a valid execution order (dependencies before dependents).
+    ///
+    /// Uses topological sorting to determine an order where all dependencies
+    /// of a story are executed before the story itself.
+    ///
+    /// # Returns
+    ///
+    /// * `Ok(Vec<String>)` containing story IDs in execution order
+    /// * `Err(DependencyError::CycleDetected)` if the graph contains cycles
+    pub fn topological_order(&self) -> Result<Vec<String>, DependencyError> {
+        // toposort returns nodes in dependency order (dependencies first)
+        // Since our edges point from dependent -> dependency, we need to reverse the result
+        match toposort(&self.graph, None) {
+            Ok(indices) => {
+                // Reverse to get dependencies before dependents
+                let order: Vec<String> = indices
+                    .into_iter()
+                    .rev()
+                    .map(|idx| self.graph[idx].id.clone())
+                    .collect();
+                Ok(order)
+            }
+            Err(_) => {
+                // Cycle detected - collect participants for error message
+                let cycle_stories = self.find_cycle_participants();
+                Err(DependencyError::CycleDetected(cycle_stories))
+            }
+        }
+    }
+
     /// Finds all story IDs that participate in cycles.
     ///
     /// Uses a simple approach: a node is in a cycle if it can reach itself
@@ -265,5 +295,97 @@ mod tests {
             }
             _ => panic!("Expected CycleDetected error"),
         }
+    }
+
+    #[test]
+    fn test_topological_order_multi_level_dependencies() {
+        // Create a multi-level dependency graph:
+        //
+        //   US-001 (no deps)
+        //      |
+        //   US-002 (depends on US-001)
+        //      |
+        //   US-003 (depends on US-002)
+        //      |
+        //   US-004 (depends on US-003)
+        //
+        // Also add US-005 which depends on both US-001 and US-003 (diamond pattern)
+        //
+        // Valid orders must have: US-001 before US-002 before US-003 before US-004
+        // And: US-001 before US-005, US-003 before US-005
+        let stories = vec![
+            make_story("US-004", vec!["US-003"]),
+            make_story("US-002", vec!["US-001"]),
+            make_story("US-005", vec!["US-001", "US-003"]),
+            make_story("US-001", vec![]),
+            make_story("US-003", vec!["US-002"]),
+        ];
+
+        let graph = DependencyGraph::from_stories(&stories);
+        let result = graph.topological_order();
+
+        assert!(result.is_ok());
+        let order = result.unwrap();
+
+        // Verify all stories are present
+        assert_eq!(order.len(), 5);
+
+        // Helper to get position in order
+        let pos = |id: &str| order.iter().position(|s| s == id).unwrap();
+
+        // Verify dependency ordering constraints
+        // US-001 must come before US-002
+        assert!(
+            pos("US-001") < pos("US-002"),
+            "US-001 should come before US-002"
+        );
+        // US-002 must come before US-003
+        assert!(
+            pos("US-002") < pos("US-003"),
+            "US-002 should come before US-003"
+        );
+        // US-003 must come before US-004
+        assert!(
+            pos("US-003") < pos("US-004"),
+            "US-003 should come before US-004"
+        );
+        // US-001 must come before US-005
+        assert!(
+            pos("US-001") < pos("US-005"),
+            "US-001 should come before US-005"
+        );
+        // US-003 must come before US-005
+        assert!(
+            pos("US-003") < pos("US-005"),
+            "US-003 should come before US-005"
+        );
+    }
+
+    #[test]
+    fn test_topological_order_cycle_fails() {
+        // Cycle: US-001 -> US-002 -> US-001
+        let stories = vec![
+            make_story("US-001", vec!["US-002"]),
+            make_story("US-002", vec!["US-001"]),
+        ];
+
+        let graph = DependencyGraph::from_stories(&stories);
+        let result = graph.topological_order();
+
+        assert!(result.is_err());
+        match result {
+            Err(DependencyError::CycleDetected(_)) => {}
+            _ => panic!("Expected CycleDetected error"),
+        }
+    }
+
+    #[test]
+    fn test_topological_order_empty_graph() {
+        let stories: Vec<PrdUserStory> = vec![];
+        let graph = DependencyGraph::from_stories(&stories);
+
+        let result = graph.topological_order();
+        assert!(result.is_ok());
+        assert!(result.unwrap().is_empty());
     }
 }
