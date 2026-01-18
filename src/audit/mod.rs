@@ -16,6 +16,7 @@ pub mod dependencies;
 pub mod inventory;
 pub mod languages;
 pub mod patterns;
+pub mod testing;
 
 // Re-exports for convenience
 #[allow(unused_imports)]
@@ -41,6 +42,10 @@ pub use languages::{LanguageAnalyzer, LanguageDetector, LanguageInfo, LanguageSu
 pub use patterns::{
     AsyncPattern, ErrorHandlingPattern, ModulePattern, NamingConvention, NamingConventionInfo,
     PatternAnalysis, PatternAnalyzer,
+};
+#[allow(unused_imports)]
+pub use testing::{
+    SourceModule, TestAnalysis, TestAnalyzer, TestFile, TestPattern, TestPatternInfo,
 };
 
 use serde::{Deserialize, Serialize};

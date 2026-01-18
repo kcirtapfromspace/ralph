@@ -120,7 +120,7 @@
       "description": "As a user, I want the audit to discover API endpoints and interfaces so I know what the codebase exposes.",
       "id": "US-007",
       "notes": "Use regex to find route definitions and clap derives",
-      "passes": false,
+      "passes": true,
       "priority": 7,
       "title": "Implement API inventory"
     },
