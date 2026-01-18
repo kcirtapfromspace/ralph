@@ -9,8 +9,10 @@ use crate::mcp::resources::{
 };
 use crate::mcp::tools::audit::{
     all_sections, create_error_response as create_audit_error_response,
+    create_status_error_response, create_status_success_response,
     create_success_response as create_audit_success_response, generate_audit_id,
-    resolve_audit_path, AuditOutputFormat, AuditState, StartAuditError, StartAuditRequest,
+    resolve_audit_path, AuditOutputFormat, AuditState, GetAuditStatusError, GetAuditStatusRequest,
+    StartAuditError, StartAuditRequest,
 };
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::get_status::{GetStatusRequest, GetStatusResponse};
@@ -37,6 +39,7 @@ use rmcp::model::{
 use rmcp::service::{RequestContext, RoleServer};
 use rmcp::ErrorData as McpError;
 use rmcp::{tool, tool_handler, tool_router, ServerHandler};
+use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
 use tokio::sync::{watch, RwLock};
@@ -84,6 +87,8 @@ pub struct ServerState {
     pub prd_path: Option<PathBuf>,
     /// Current execution state
     pub execution_state: ExecutionState,
+    /// Audit states indexed by audit ID
+    pub audit_states: HashMap<String, AuditState>,
 }
 
 impl Default for ServerState {
@@ -91,6 +96,7 @@ impl Default for ServerState {
         Self {
             prd_path: None,
             execution_state: ExecutionState::Idle,
+            audit_states: HashMap::new(),
         }
     }
 }
@@ -185,6 +191,7 @@ impl RalphMcpServer {
             state: Arc::new(RwLock::new(ServerState {
                 prd_path: Some(prd_path),
                 execution_state: ExecutionState::Idle,
+                audit_states: HashMap::new(),
             })),
             config: Arc::new(None),
             cancel_sender: Arc::new(cancel_sender),
@@ -280,6 +287,7 @@ impl RalphMcpServer {
             state: Arc::new(RwLock::new(ServerState {
                 prd_path: Some(prd_path),
                 execution_state: ExecutionState::Idle,
+                audit_states: HashMap::new(),
             })),
             config: Arc::new(None),
             cancel_sender: Arc::new(cancel_sender),
@@ -875,12 +883,74 @@ impl RalphMcpServer {
             started_at: crate::mcp::tools::audit::current_timestamp(),
             completed: false,
             error: None,
+            progress: 0,
         };
+
+        // Store the audit state
+        {
+            let mut state = self.state.write().await;
+            state
+                .audit_states
+                .insert(audit_id.clone(), audit_state.clone());
+        }
 
         // Create success response
         let response = create_audit_success_response(&audit_state);
         serde_json::to_string_pretty(&response)
             .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize response: {}\"}}", e))
+    }
+
+    /// Get the status of a codebase audit.
+    ///
+    /// This tool returns the current status and progress of an audit started with start_audit.
+    ///
+    /// # Parameters
+    ///
+    /// * `audit_id` - The audit ID returned from start_audit.
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether the request was successful
+    /// - `audit_id`: The audit ID
+    /// - `status`: Current status: pending, running, completed, failed
+    /// - `progress`: Progress percentage (0-100) if running
+    /// - `error`: Error message if failed
+    /// - `message`: Status message
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The audit ID is not found
+    #[tool(
+        name = "get_audit_status",
+        description = "Get the status of a codebase audit. Returns status (pending, running, completed, failed) and progress percentage if running."
+    )]
+    pub async fn get_audit_status(
+        &self,
+        Parameters(req): Parameters<GetAuditStatusRequest>,
+    ) -> String {
+        // Get the audit state from server state
+        let audit_state = {
+            let state = self.state.read().await;
+            state.audit_states.get(&req.audit_id).cloned()
+        };
+
+        match audit_state {
+            Some(state) => {
+                let response = create_status_success_response(&state);
+                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                })
+            }
+            None => {
+                let error = GetAuditStatusError::AuditNotFound(req.audit_id);
+                let response = create_status_error_response(&error);
+                serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                })
+            }
+        }
     }
 }
 
@@ -2214,5 +2284,235 @@ mod tests {
 
         // IDs should be different
         assert_ne!(json1["audit_id"], json2["audit_id"]);
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_status_not_found() {
+        use rmcp::handler::server::wrapper::Parameters;
+
+        let server = RalphMcpServer::new();
+
+        let result = server
+            .get_audit_status(Parameters(GetAuditStatusRequest {
+                audit_id: "audit-nonexistent".to_string(),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], false);
+        assert!(json["message"].as_str().unwrap().contains("not found"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("audit-nonexistent"));
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_status_pending() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start an audit
+        let start_result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let start_json: serde_json::Value = serde_json::from_str(&start_result).unwrap();
+        let audit_id = start_json["audit_id"].as_str().unwrap().to_string();
+
+        // Get the status
+        let result = server
+            .get_audit_status(Parameters(GetAuditStatusRequest {
+                audit_id: audit_id.clone(),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["audit_id"], audit_id);
+        assert_eq!(json["status"], "pending");
+        assert!(json.get("progress").is_none()); // Progress not shown for pending
+        assert!(json["message"].as_str().unwrap().contains("pending"));
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_status_running() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        use crate::mcp::tools::audit::AuditSection;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start an audit
+        let start_result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let start_json: serde_json::Value = serde_json::from_str(&start_result).unwrap();
+        let audit_id = start_json["audit_id"].as_str().unwrap().to_string();
+
+        // Update the audit state to running with progress
+        {
+            let mut state = server.state_mut().await;
+            if let Some(audit_state) = state.audit_states.get_mut(&audit_id) {
+                audit_state.progress = 50;
+            }
+        }
+
+        // Get the status
+        let result = server
+            .get_audit_status(Parameters(GetAuditStatusRequest {
+                audit_id: audit_id.clone(),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["audit_id"], audit_id);
+        assert_eq!(json["status"], "running");
+        assert_eq!(json["progress"], 50);
+        assert!(json["message"].as_str().unwrap().contains("running"));
+        assert!(json["message"].as_str().unwrap().contains("50%"));
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_status_completed() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start an audit
+        let start_result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let start_json: serde_json::Value = serde_json::from_str(&start_result).unwrap();
+        let audit_id = start_json["audit_id"].as_str().unwrap().to_string();
+
+        // Update the audit state to completed
+        {
+            let mut state = server.state_mut().await;
+            if let Some(audit_state) = state.audit_states.get_mut(&audit_id) {
+                audit_state.completed = true;
+                audit_state.progress = 100;
+            }
+        }
+
+        // Get the status
+        let result = server
+            .get_audit_status(Parameters(GetAuditStatusRequest {
+                audit_id: audit_id.clone(),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["audit_id"], audit_id);
+        assert_eq!(json["status"], "completed");
+        assert!(json.get("progress").is_none()); // Progress not shown for completed
+        assert!(json["message"].as_str().unwrap().contains("completed"));
+    }
+
+    #[tokio::test]
+    async fn test_get_audit_status_failed() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start an audit
+        let start_result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let start_json: serde_json::Value = serde_json::from_str(&start_result).unwrap();
+        let audit_id = start_json["audit_id"].as_str().unwrap().to_string();
+
+        // Update the audit state to failed
+        {
+            let mut state = server.state_mut().await;
+            if let Some(audit_state) = state.audit_states.get_mut(&audit_id) {
+                audit_state.error = Some("Test error message".to_string());
+            }
+        }
+
+        // Get the status
+        let result = server
+            .get_audit_status(Parameters(GetAuditStatusRequest {
+                audit_id: audit_id.clone(),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["audit_id"], audit_id);
+        assert_eq!(json["status"], "failed");
+        assert_eq!(json["error"], "Test error message");
+        assert!(json["message"].as_str().unwrap().contains("failed"));
+        assert!(json["message"]
+            .as_str()
+            .unwrap()
+            .contains("Test error message"));
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_stores_state() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start an audit
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        let audit_id = json["audit_id"].as_str().unwrap().to_string();
+
+        // Verify state was stored
+        {
+            let state = server.state().await;
+            assert!(state.audit_states.contains_key(&audit_id));
+            let audit_state = state.audit_states.get(&audit_id).unwrap();
+            assert_eq!(audit_state.audit_id, audit_id);
+            assert_eq!(audit_state.progress, 0);
+            assert!(!audit_state.completed);
+            assert!(audit_state.error.is_none());
+        }
     }
 }

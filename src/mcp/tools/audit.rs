@@ -139,6 +139,84 @@ pub struct AuditState {
     pub completed: bool,
     /// Error message if failed
     pub error: Option<String>,
+    /// Progress percentage (0-100)
+    pub progress: u8,
+}
+
+/// Audit status values for get_audit_status.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "lowercase")]
+pub enum AuditStatus {
+    /// Audit is waiting to start
+    Pending,
+    /// Audit is currently running
+    Running,
+    /// Audit completed successfully
+    Completed,
+    /// Audit failed
+    Failed,
+}
+
+impl std::fmt::Display for AuditStatus {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuditStatus::Pending => write!(f, "pending"),
+            AuditStatus::Running => write!(f, "running"),
+            AuditStatus::Completed => write!(f, "completed"),
+            AuditStatus::Failed => write!(f, "failed"),
+        }
+    }
+}
+
+/// Request parameters for the get_audit_status tool.
+#[derive(Debug, Deserialize, Serialize, JsonSchema)]
+pub struct GetAuditStatusRequest {
+    /// The audit ID to check status for.
+    #[schemars(description = "The audit ID returned from start_audit")]
+    pub audit_id: String,
+}
+
+/// Response from the get_audit_status tool.
+#[derive(Debug, Serialize)]
+pub struct GetAuditStatusResponse {
+    /// Whether the request was successful
+    pub success: bool,
+
+    /// The audit ID
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub audit_id: Option<String>,
+
+    /// Current status: pending, running, completed, failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
+
+    /// Progress percentage (0-100) if running
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<u8>,
+
+    /// Error message if failed
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+
+    /// Message describing the result
+    pub message: String,
+}
+
+/// Error types for get_audit_status operations.
+#[derive(Debug)]
+pub enum GetAuditStatusError {
+    /// Audit ID not found
+    AuditNotFound(String),
+}
+
+impl std::fmt::Display for GetAuditStatusError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            GetAuditStatusError::AuditNotFound(id) => {
+                write!(f, "Audit not found: {}", id)
+            }
+        }
+    }
 }
 
 /// Error types for start_audit operations.
@@ -279,6 +357,66 @@ pub fn create_error_response(error: &StartAuditError) -> StartAuditResponse {
     }
 }
 
+/// Get the status of an audit from its state.
+pub fn get_audit_status_from_state(state: &AuditState) -> AuditStatus {
+    if state.error.is_some() {
+        AuditStatus::Failed
+    } else if state.completed {
+        AuditStatus::Completed
+    } else if state.progress > 0 {
+        AuditStatus::Running
+    } else {
+        AuditStatus::Pending
+    }
+}
+
+/// Create a success response for get_audit_status.
+pub fn create_status_success_response(state: &AuditState) -> GetAuditStatusResponse {
+    let status = get_audit_status_from_state(state);
+
+    // Only include progress if running
+    let progress = if status == AuditStatus::Running {
+        Some(state.progress)
+    } else {
+        None
+    };
+
+    let message = match status {
+        AuditStatus::Pending => format!("Audit '{}' is pending.", state.audit_id),
+        AuditStatus::Running => format!(
+            "Audit '{}' is running ({}% complete).",
+            state.audit_id, state.progress
+        ),
+        AuditStatus::Completed => format!("Audit '{}' completed successfully.", state.audit_id),
+        AuditStatus::Failed => format!(
+            "Audit '{}' failed: {}",
+            state.audit_id,
+            state.error.as_deref().unwrap_or("Unknown error")
+        ),
+    };
+
+    GetAuditStatusResponse {
+        success: true,
+        audit_id: Some(state.audit_id.clone()),
+        status: Some(status.to_string()),
+        progress,
+        error: state.error.clone(),
+        message,
+    }
+}
+
+/// Create an error response for get_audit_status.
+pub fn create_status_error_response(error: &GetAuditStatusError) -> GetAuditStatusResponse {
+    GetAuditStatusResponse {
+        success: false,
+        audit_id: None,
+        status: None,
+        progress: None,
+        error: None,
+        message: error.to_string(),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -410,6 +548,7 @@ mod tests {
             started_at: 1234567890,
             completed: false,
             error: None,
+            progress: 0,
         };
 
         let response = create_success_response(&state);
@@ -525,11 +664,216 @@ mod tests {
             started_at: 1234567890,
             completed: false,
             error: None,
+            progress: 50,
         };
 
         let cloned = state.clone();
         assert_eq!(cloned.audit_id, state.audit_id);
         assert_eq!(cloned.path, state.path);
         assert_eq!(cloned.sections, state.sections);
+    }
+
+    #[test]
+    fn test_audit_status_display() {
+        assert_eq!(AuditStatus::Pending.to_string(), "pending");
+        assert_eq!(AuditStatus::Running.to_string(), "running");
+        assert_eq!(AuditStatus::Completed.to_string(), "completed");
+        assert_eq!(AuditStatus::Failed.to_string(), "failed");
+    }
+
+    #[test]
+    fn test_get_audit_status_from_state_pending() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: false,
+            error: None,
+            progress: 0,
+        };
+
+        assert_eq!(get_audit_status_from_state(&state), AuditStatus::Pending);
+    }
+
+    #[test]
+    fn test_get_audit_status_from_state_running() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: false,
+            error: None,
+            progress: 50,
+        };
+
+        assert_eq!(get_audit_status_from_state(&state), AuditStatus::Running);
+    }
+
+    #[test]
+    fn test_get_audit_status_from_state_completed() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: true,
+            error: None,
+            progress: 100,
+        };
+
+        assert_eq!(get_audit_status_from_state(&state), AuditStatus::Completed);
+    }
+
+    #[test]
+    fn test_get_audit_status_from_state_failed() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: false,
+            error: Some("Test error".to_string()),
+            progress: 25,
+        };
+
+        assert_eq!(get_audit_status_from_state(&state), AuditStatus::Failed);
+    }
+
+    #[test]
+    fn test_create_status_success_response_running() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: false,
+            error: None,
+            progress: 50,
+        };
+
+        let response = create_status_success_response(&state);
+
+        assert!(response.success);
+        assert_eq!(response.audit_id, Some("audit-123".to_string()));
+        assert_eq!(response.status, Some("running".to_string()));
+        assert_eq!(response.progress, Some(50));
+        assert!(response.error.is_none());
+        assert!(response.message.contains("running"));
+        assert!(response.message.contains("50%"));
+    }
+
+    #[test]
+    fn test_create_status_success_response_completed() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: true,
+            error: None,
+            progress: 100,
+        };
+
+        let response = create_status_success_response(&state);
+
+        assert!(response.success);
+        assert_eq!(response.status, Some("completed".to_string()));
+        assert!(response.progress.is_none()); // Progress only shown when running
+        assert!(response.message.contains("completed"));
+    }
+
+    #[test]
+    fn test_create_status_success_response_failed() {
+        let state = AuditState {
+            audit_id: "audit-123".to_string(),
+            path: PathBuf::from("/test"),
+            sections: vec![AuditSection::Inventory],
+            format: AuditOutputFormat::Json,
+            started_at: 1234567890,
+            completed: false,
+            error: Some("Something went wrong".to_string()),
+            progress: 25,
+        };
+
+        let response = create_status_success_response(&state);
+
+        assert!(response.success);
+        assert_eq!(response.status, Some("failed".to_string()));
+        assert_eq!(response.error, Some("Something went wrong".to_string()));
+        assert!(response.message.contains("failed"));
+        assert!(response.message.contains("Something went wrong"));
+    }
+
+    #[test]
+    fn test_create_status_error_response() {
+        let error = GetAuditStatusError::AuditNotFound("audit-999".to_string());
+        let response = create_status_error_response(&error);
+
+        assert!(!response.success);
+        assert!(response.audit_id.is_none());
+        assert!(response.status.is_none());
+        assert!(response.progress.is_none());
+        assert!(response.message.contains("not found"));
+        assert!(response.message.contains("audit-999"));
+    }
+
+    #[test]
+    fn test_get_audit_status_error_display() {
+        let error = GetAuditStatusError::AuditNotFound("audit-123".to_string());
+        assert!(error.to_string().contains("Audit not found"));
+        assert!(error.to_string().contains("audit-123"));
+    }
+
+    #[test]
+    fn test_get_audit_status_request_deserialization() {
+        let json = r#"{"audit_id": "audit-123-456"}"#;
+        let req: GetAuditStatusRequest = serde_json::from_str(json).unwrap();
+
+        assert_eq!(req.audit_id, "audit-123-456");
+    }
+
+    #[test]
+    fn test_get_audit_status_response_serialization() {
+        let response = GetAuditStatusResponse {
+            success: true,
+            audit_id: Some("audit-123".to_string()),
+            status: Some("running".to_string()),
+            progress: Some(50),
+            error: None,
+            message: "Running".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(json.contains("\"success\":true"));
+        assert!(json.contains("\"audit_id\":\"audit-123\""));
+        assert!(json.contains("\"status\":\"running\""));
+        assert!(json.contains("\"progress\":50"));
+        assert!(!json.contains("error")); // None fields should be skipped
+    }
+
+    #[test]
+    fn test_get_audit_status_response_none_fields_not_serialized() {
+        let response = GetAuditStatusResponse {
+            success: false,
+            audit_id: None,
+            status: None,
+            progress: None,
+            error: None,
+            message: "Error".to_string(),
+        };
+
+        let json = serde_json::to_string(&response).unwrap();
+        assert!(!json.contains("audit_id"));
+        assert!(!json.contains("status"));
+        assert!(!json.contains("progress"));
+        assert!(!json.contains("error"));
     }
 }

@@ -363,7 +363,7 @@
       "description": "As an AI agent, I want to start an audit via MCP so I can analyze codebases programmatically.",
       "id": "US-021",
       "notes": "Follow pattern from existing MCP tools in src/mcp/tools/",
-      "passes": false,
+      "passes": true,
       "priority": 21,
       "title": "Implement start_audit MCP tool"
     },
