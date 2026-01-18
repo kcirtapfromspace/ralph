@@ -91,5 +91,5 @@ docker run -i --rm \
 
 ## Related Documentation
 
-- [Docker MCP Setup Guide](../docs/guides/docker-mcp-setup.md) (when available)
-- [Ralph README](../README.md)
+- [Docker MCP Setup Guide](../docs/guides/docker-mcp-setup.md) - Comprehensive guide for Docker deployment
+- [Ralph Main Repository](https://github.com/kcirtapfromspace/ralph) - Main project documentation
