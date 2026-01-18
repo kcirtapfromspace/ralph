@@ -26,6 +26,7 @@ const BLOCK_CHARS: &[char] = &[' ', '░', '▒', '▓', '█'];
 
 /// Character rendering mode
 #[derive(Debug, Clone, Copy, Default)]
+#[allow(dead_code)]
 pub enum CharacterMode {
     /// Full ASCII gradient (94 characters)
     #[default]
@@ -38,6 +39,7 @@ pub enum CharacterMode {
 
 /// Color rendering mode
 #[derive(Debug, Clone, Copy, Default)]
+#[allow(dead_code)]
 pub enum ColorMode {
     /// Full 24-bit true color
     #[default]
@@ -96,6 +98,7 @@ impl ConversionConfig {
     }
 
     /// Create config for larger display
+    #[allow(dead_code)]
     pub fn large() -> Self {
         Self {
             width: 80,
@@ -130,7 +133,7 @@ impl Color {
         }
     }
 
-    fn to_rgb8(&self) -> (u8, u8, u8) {
+    fn to_rgb8(self) -> (u8, u8, u8) {
         (
             (self.r * 255.0).clamp(0.0, 255.0) as u8,
             (self.g * 255.0).clamp(0.0, 255.0) as u8,
@@ -262,6 +265,7 @@ impl ImageConverter {
     }
 
     /// Create a converter with default mascot settings
+    #[allow(dead_code)]
     pub fn mascot() -> Self {
         Self::new(ConversionConfig::mascot())
     }
@@ -411,6 +415,7 @@ use rust_embed::Embed;
 pub struct MascotAssets;
 
 /// Get list of available mascot image names
+#[allow(dead_code)]
 pub fn list_mascot_images() -> Vec<String> {
     <MascotAssets as Embed>::iter()
         .map(|s| s.to_string())
