@@ -307,21 +307,18 @@ impl TuiRunnerDisplay {
             return;
         }
 
+        let message = format!("🎉 ALL {} STORIES COMPLETE! 🎉", total);
+        let box_width = message.len() + 4;
+
         println!();
         println!(
             "{}",
-            self.style_success("╔════════════════════════════════════════════════════════════╗")
+            self.style_success(&format!("╔{}╗", "═".repeat(box_width - 2)))
         );
+        println!("{}", self.style_success(&format!("║  {}  ║", message)));
         println!(
             "{}",
-            self.style_success(&format!(
-                "║           🎉 ALL {} STORIES COMPLETE! 🎉                   ║",
-                total
-            ))
-        );
-        println!(
-            "{}",
-            self.style_success("╚════════════════════════════════════════════════════════════╝")
+            self.style_success(&format!("╚{}╝", "═".repeat(box_width - 2)))
         );
         println!();
         println!("<promise>COMPLETE</promise>");
