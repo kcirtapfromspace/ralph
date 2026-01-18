@@ -14,8 +14,8 @@ NC='\033[0m'
 # Find the directory where this script lives
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-# Default install location
-INSTALL_DIR="${1:-/usr/local/bin}"
+# Default install location (~/.local/bin is standard for user installs)
+INSTALL_DIR="${1:-$HOME/.local/bin}"
 
 echo ""
 echo -e "${BLUE}Ralph Installer${NC}"
@@ -33,10 +33,10 @@ fi
 
 # Build the release binary
 echo -e "${BLUE}Building ralph...${NC}"
-cd "$SCRIPT_DIR/cli"
-cargo build --release --quiet
+cd "$SCRIPT_DIR"
+cargo build --release --bin ralph --quiet
 
-RALPH_BIN="$SCRIPT_DIR/cli/target/release/ralph"
+RALPH_BIN="$SCRIPT_DIR/target/release/ralph"
 
 # Check if binary was built
 if [ ! -f "$RALPH_BIN" ]; then
@@ -62,8 +62,8 @@ if [ ! -w "$INSTALL_DIR" ]; then
   echo -e "${RED}Error:${NC} Cannot write to $INSTALL_DIR"
   echo ""
   echo "Options:"
-  echo "  1. Run with sudo: sudo ./install.sh"
-  echo "  2. Install to ~/bin: ./install.sh ~/bin"
+  echo "  1. Create the directory: mkdir -p $INSTALL_DIR"
+  echo "  2. Install elsewhere: ./install.sh /usr/local/bin  (requires sudo)"
   echo ""
   exit 1
 fi
@@ -75,14 +75,9 @@ if [ -L "$TARGET" ] || [ -f "$TARGET" ]; then
   rm "$TARGET"
 fi
 
-# Copy the binary (not symlink, since we need RALPH_HOME to work)
+# Copy the binary
 cp "$RALPH_BIN" "$TARGET"
 chmod +x "$TARGET"
-
-# Also copy the binary to bin/ for backward compatibility
-mkdir -p "$SCRIPT_DIR/bin"
-cp "$RALPH_BIN" "$SCRIPT_DIR/bin/ralph"
-chmod +x "$SCRIPT_DIR/bin/ralph"
 
 echo -e "${GREEN}✓ Installed${NC} ralph to $TARGET"
 echo ""
