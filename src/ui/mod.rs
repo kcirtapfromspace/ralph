@@ -9,6 +9,7 @@ mod colors;
 mod display;
 mod ghostty;
 mod help;
+mod image_to_ansi;
 mod interrupt;
 mod iteration_view;
 mod mascot;
@@ -24,6 +25,10 @@ pub use ghostty::{
     TerminalCapabilities, TitleStatus,
 };
 pub use help::{BuildInfo, CommandInfo, HelpRenderer, COMMANDS, GLOBAL_OPTIONS, RALPH_BANNER};
+pub use image_to_ansi::{
+    list_mascot_images, load_mascot_ansi, random_mascot_ansi, CharacterMode, ColorMode,
+    ConversionConfig, ImageConverter,
+};
 pub use interrupt::{
     is_globally_interrupted, render_interrupt_panel, reset_global_interrupt, InterruptHandler,
 };
@@ -31,7 +36,7 @@ pub use iteration_view::{
     ActivityIndicator, GateProgress, GateProgressInfo, GateSummary, IterationPreview,
     IterationSummary, IterationSummaryStack, LiveIterationPanel,
 };
-pub use mascot::{AnimationConfig, Mascot, MascotRenderer, PeekAnimation};
+pub use mascot::{random_image_mascot, AnimationConfig, Mascot, MascotRenderer, PeekAnimation};
 pub use quality_gates::{GateStatus, QualityGateRenderer, QualityGateView};
 pub use spinner::{
     progress_chars, spinner_chars, IterationProgress, ProgressManager, RalphSpinner, SpinnerStyle,
