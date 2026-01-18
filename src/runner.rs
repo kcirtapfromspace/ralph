@@ -84,13 +84,29 @@ impl Runner {
 
         let total_stories = prd.user_stories.len();
 
-        // Detect agent
+        // Check if all stories already pass
+        let passing_count = prd.user_stories.iter().filter(|s| s.passes).count();
+        if passing_count == total_stories {
+            if !self.config.quiet {
+                println!("All {} stories passed!", total_stories);
+                println!("<promise>COMPLETE</promise>");
+            }
+            return RunResult {
+                all_passed: true,
+                stories_passed: total_stories,
+                total_stories,
+                total_iterations: 0,
+                error: None,
+            };
+        }
+
+        // Detect agent (only needed if there are failing stories)
         let agent = match self.config.agent_command.clone().or_else(detect_agent) {
             Some(a) => a,
             None => {
                 return RunResult {
                     all_passed: false,
-                    stories_passed: 0,
+                    stories_passed: passing_count,
                     total_stories,
                     total_iterations: 0,
                     error: Some("No agent found. Install Claude Code CLI or Amp CLI.".to_string()),
@@ -102,7 +118,7 @@ impl Runner {
             println!("Starting Ralph iteration loop...");
             println!("PRD: {}", self.config.prd_path.display());
             println!("Agent: {}", agent);
-            println!("Stories: {}", total_stories);
+            println!("Stories: {}/{} passing", passing_count, total_stories);
             println!();
         }
 
