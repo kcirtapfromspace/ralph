@@ -146,13 +146,11 @@ impl TuiRunnerDisplay {
         } else {
             "off"
         };
-        format!(
-            "{}",
-            self.style_dim(&format!(
-                " [s] stream: {} | [e] expand: {} | [q] quit",
-                streaming, expand
-            ))
-        )
+        self.style_dim(&format!(
+            " [s] stream: {} | [e] expand: {} | [q] quit",
+            streaming, expand
+        ))
+        .to_string()
     }
 
     /// Initialize stories from PRD data.
