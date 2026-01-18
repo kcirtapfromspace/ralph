@@ -2,16 +2,10 @@ use clap::{Parser, ValueEnum};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 
-mod audit;
-mod integrations;
-mod mcp;
-mod quality;
-mod runner;
-mod ui;
-
-use mcp::RalphMcpServer;
-use runner::{Runner, RunnerConfig};
-use ui::{DisplayOptions, HelpRenderer, UiMode};
+use ralphmacchio::audit;
+use ralphmacchio::mcp::RalphMcpServer;
+use ralphmacchio::runner::{Runner, RunnerConfig};
+use ralphmacchio::ui::{DisplayOptions, HelpRenderer, UiMode};
 
 /// UI mode for terminal display
 #[derive(Debug, Clone, Copy, Default, ValueEnum)]

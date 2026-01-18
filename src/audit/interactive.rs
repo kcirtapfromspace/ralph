@@ -865,8 +865,10 @@ mod tests {
             recommendation: "Fix it".to_string(),
         }];
 
-        let mut answers = UserAnswers::default();
-        answers.priority = ProjectPriority::Security;
+        let answers = UserAnswers {
+            priority: ProjectPriority::Security,
+            ..Default::default()
+        };
 
         let refined = session.refine_findings(findings, &answers);
 
@@ -888,8 +890,10 @@ mod tests {
             recommendation: "Address it".to_string(),
         }];
 
-        let mut answers = UserAnswers::default();
-        answers.priority = ProjectPriority::Quality;
+        let answers = UserAnswers {
+            priority: ProjectPriority::Quality,
+            ..Default::default()
+        };
 
         let refined = session.refine_findings(findings, &answers);
 
@@ -911,8 +915,10 @@ mod tests {
             recommendation: "Add documentation.".to_string(),
         }];
 
-        let mut answers = UserAnswers::default();
-        answers.target_users = TargetUsers::Developers;
+        let answers = UserAnswers {
+            target_users: TargetUsers::Developers,
+            ..Default::default()
+        };
 
         let refined = session.refine_findings(findings, &answers);
 
@@ -933,8 +939,10 @@ mod tests {
             recommendation: "Update to new API.".to_string(),
         }];
 
-        let mut answers = UserAnswers::default();
-        answers.stage = ProjectStage::Legacy;
+        let answers = UserAnswers {
+            stage: ProjectStage::Legacy,
+            ..Default::default()
+        };
 
         let refined = session.refine_findings(findings, &answers);
 

@@ -432,7 +432,7 @@
       "description": "As a user, I want to configure audit behavior via quality profiles so I can customize thresholds.",
       "id": "US-025",
       "notes": "Follow existing profile pattern in src/quality/profiles.rs",
-      "passes": false,
+      "passes": true,
       "priority": 25,
       "title": "Add audit settings to quality profiles"
     },

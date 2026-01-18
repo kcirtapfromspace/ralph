@@ -655,7 +655,7 @@ mod tests {
 
         // Should count .gitignore and included.rs, but not debug.log or ignored_dir/file.rs
         assert_eq!(inventory.total_files, 2);
-        assert!(inventory.files_by_extension.get("log").is_none());
+        assert!(!inventory.files_by_extension.contains_key("log"));
     }
 
     #[test]

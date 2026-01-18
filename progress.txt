@@ -306,3 +306,16 @@ Feature: Codebase Audit
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 13:14 - US-025
+- **What was implemented**: Add audit settings to quality profiles
+- **Files changed**:
+  - rogress.txt
+  - uality/ralph-quality.toml
+  - rc/quality/mod.rs
+  - rc/quality/profiles.rs
+  - ests/fixtures/test_quality_config.toml
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---
