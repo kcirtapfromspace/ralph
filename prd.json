@@ -50,7 +50,7 @@
       "description": "As a CI system, I want to cache the cargo registry and git dependencies so that crate downloads are not repeated.",
       "id": "US-003",
       "notes": "Works with BuildKit which is default in modern Docker",
-      "passes": false,
+      "passes": true,
       "priority": 3,
       "title": "Add BuildKit cache mounts for cargo registry"
     },
