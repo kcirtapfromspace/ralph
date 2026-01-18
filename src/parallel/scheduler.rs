@@ -4,7 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use tokio::sync::{watch, RwLock, Semaphore};
+use tokio::sync::{watch, Mutex, RwLock, Semaphore};
 
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::load_prd::{validate_prd, PrdFile};
@@ -110,6 +110,8 @@ pub struct ParallelRunner {
     semaphore: Arc<Semaphore>,
     /// Shared execution state tracking in-flight, completed, and failed stories.
     execution_state: Arc<RwLock<ParallelExecutionState>>,
+    /// Mutex to serialize git operations across parallel stories.
+    git_mutex: Arc<Mutex<()>>,
 }
 
 #[allow(dead_code)]
@@ -122,12 +124,14 @@ impl ParallelRunner {
     pub fn new(config: ParallelRunnerConfig, base_config: RunnerConfig) -> Self {
         let semaphore = Arc::new(Semaphore::new(config.max_concurrency as usize));
         let execution_state = Arc::new(RwLock::new(ParallelExecutionState::default()));
+        let git_mutex = Arc::new(Mutex::new(()));
 
         Self {
             config,
             base_config,
             semaphore,
             execution_state,
+            git_mutex,
         }
     }
 
@@ -294,6 +298,7 @@ impl ParallelRunner {
                     quality_profile: None,
                     agent_command: agent.clone(),
                     max_iterations: self.base_config.max_iterations_per_story,
+                    git_mutex: Some(self.git_mutex.clone()),
                 };
 
                 let execution_state = self.execution_state.clone();

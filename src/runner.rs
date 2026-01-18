@@ -224,6 +224,7 @@ impl Runner {
                         quality_profile: None,
                         agent_command: agent.clone(),
                         max_iterations: self.config.max_iterations_per_story,
+                        git_mutex: None, // Sequential execution doesn't need mutex
                     };
 
                     let executor = StoryExecutor::new(executor_config);

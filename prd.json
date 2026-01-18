@@ -428,7 +428,7 @@
       "description": "As a developer, I need file locks to prevent concurrent modification.",
       "id": "US-021",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 21,
       "targetFiles": [
         "src/parallel/scheduler.rs"
