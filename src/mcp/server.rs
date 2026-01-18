@@ -13,6 +13,10 @@ use crate::mcp::tools::list_stories::{load_stories, ListStoriesRequest, ListStor
 use crate::mcp::tools::load_prd::{
     create_error_response, create_success_response, validate_prd, LoadPrdRequest,
 };
+use crate::mcp::tools::run_all::{
+    create_error_response as create_run_all_error_response,
+    create_started_response as create_run_all_started_response, RunAllRequest,
+};
 use crate::mcp::tools::run_story::{
     check_already_running, create_error_response as create_run_error_response,
     create_started_response, current_timestamp, find_story, RunStoryError, RunStoryRequest,
@@ -22,6 +26,7 @@ use crate::mcp::tools::stop_execution::{
     state_description, StopExecutionRequest,
 };
 use crate::quality::QualityConfig;
+use crate::runner::{Runner, RunnerConfig};
 use crate::ui::{DisplayOptions, RalphDisplay};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -798,6 +803,188 @@ impl RalphMcpServer {
                 format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
             })
         }
+    }
+
+    /// Run all failing stories until all pass or an error occurs.
+    ///
+    /// This tool provides feature parity with the terminal `ralph` command, executing
+    /// all stories in priority order until complete. It's the recommended way to run
+    /// Ralph from Claude Desktop.
+    ///
+    /// # Parameters
+    ///
+    /// * `max_iterations` - Optional maximum total iterations across all stories (0 = unlimited)
+    /// * `max_iterations_per_story` - Optional maximum iterations per individual story (default: 10)
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether execution started successfully
+    /// - `stories_to_execute`: Number of failing stories that will be executed
+    /// - `total_stories`: Total number of stories in the PRD
+    /// - `message`: Status message
+    ///
+    /// # Completion
+    ///
+    /// When all stories pass, the final output includes `<promise>COMPLETE</promise>`.
+    /// Use get_status to monitor progress during execution.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - No PRD is loaded
+    /// - Another execution is already in progress
+    /// - No agent CLI (claude or amp) is available
+    #[tool(
+        name = "run_all",
+        description = "Run all failing stories until complete. This is the primary way to execute a PRD - it picks stories in priority order and keeps running until all pass. Returns <promise>COMPLETE</promise> when done."
+    )]
+    pub async fn run_all(&self, Parameters(req): Parameters<RunAllRequest>) -> String {
+        // Get the PRD path and current execution state
+        let (prd_path, current_state) = {
+            let state = self.state.read().await;
+            (state.prd_path.clone(), state.execution_state.clone())
+        };
+
+        // Check if a PRD is loaded
+        let prd_path = match prd_path {
+            Some(path) => path,
+            None => {
+                let response = create_run_all_error_response(
+                    "No PRD loaded. Use load_prd tool to load a PRD file first.",
+                );
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        // Check if already running
+        if let Some(running_id) = check_already_running(&current_state) {
+            let response = create_run_all_error_response(&format!(
+                "Already executing story {}. Use stop_execution first or wait for completion.",
+                running_id
+            ));
+            return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+            });
+        }
+
+        // Load the PRD to count stories
+        let prd_content = match std::fs::read_to_string(&prd_path) {
+            Ok(content) => content,
+            Err(e) => {
+                let response = create_run_all_error_response(&format!("Failed to read PRD: {}", e));
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        let prd: crate::mcp::tools::load_prd::PrdFile = match serde_json::from_str(&prd_content) {
+            Ok(prd) => prd,
+            Err(e) => {
+                let response =
+                    create_run_all_error_response(&format!("Failed to parse PRD: {}", e));
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        let total_stories = prd.user_stories.len();
+        let failing_stories = prd.user_stories.iter().filter(|s| !s.passes).count();
+
+        // If all stories already pass, return immediately
+        if failing_stories == 0 {
+            let response = crate::mcp::tools::run_all::RunAllResponse {
+                success: true,
+                stories_to_execute: 0,
+                total_stories,
+                message: format!(
+                    "All {} stories already pass!\n<promise>COMPLETE</promise>",
+                    total_stories
+                ),
+            };
+            return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+            });
+        }
+
+        // Get project root from PRD path
+        let project_root = prd_path
+            .parent()
+            .map(|p| p.to_path_buf())
+            .unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+
+        // Create runner config
+        let runner_config = RunnerConfig {
+            prd_path: prd_path.clone(),
+            working_dir: project_root,
+            max_iterations_per_story: req.max_iterations_per_story.unwrap_or(10),
+            max_total_iterations: req.max_iterations.unwrap_or(0),
+            agent_command: None, // Auto-detect
+            quiet: true,         // Suppress terminal output in MCP mode
+        };
+
+        // Reset cancellation and set state to running (first story)
+        self.reset_cancel();
+        {
+            let first_story = prd
+                .user_stories
+                .iter()
+                .filter(|s| !s.passes)
+                .min_by_key(|s| s.priority);
+
+            if let Some(story) = first_story {
+                let mut state = self.state.write().await;
+                state.execution_state = ExecutionState::Running {
+                    story_id: story.id.clone(),
+                    started_at: current_timestamp(),
+                    iteration: 1,
+                    max_iterations: req.max_iterations_per_story.unwrap_or(10),
+                };
+            }
+        }
+
+        // Clone necessary data for the spawned task
+        let state = self.state.clone();
+        let cancel_receiver = self.cancel_receiver();
+
+        // Spawn async task to run all stories
+        tokio::spawn(async move {
+            let runner = Runner::new(runner_config);
+            let result = runner.run().await;
+
+            // Update state based on result
+            let mut server_state = state.write().await;
+            if result.all_passed {
+                server_state.execution_state = ExecutionState::Completed {
+                    story_id: "all".to_string(),
+                    commit_hash: None,
+                };
+            } else if let Some(error) = result.error {
+                server_state.execution_state = ExecutionState::Failed {
+                    story_id: "run_all".to_string(),
+                    error,
+                };
+            } else {
+                server_state.execution_state = ExecutionState::Idle;
+            }
+
+            // Check if cancelled
+            if *cancel_receiver.borrow() {
+                server_state.execution_state = ExecutionState::Failed {
+                    story_id: "run_all".to_string(),
+                    error: "Execution cancelled by user".to_string(),
+                };
+            }
+        });
+
+        // Return started response immediately (execution continues in background)
+        let response = create_run_all_started_response(failing_stories, total_stories);
+        serde_json::to_string_pretty(&response)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize response: {}\"}}", e))
     }
 }
 
