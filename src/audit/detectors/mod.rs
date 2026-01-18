@@ -4,7 +4,12 @@
 //! and identify areas where improvements can be made.
 
 pub mod architecture_gaps;
+pub mod opportunities;
 
 pub use architecture_gaps::{
     ArchitectureGap, ArchitectureGapType, ArchitectureGapsAnalysis, ArchitectureGapsDetector,
+};
+pub use opportunities::{
+    OpportunityAnalysis, OpportunityContext, OpportunityDetector, OpportunityPattern,
+    OpportunityType,
 };
