@@ -329,7 +329,7 @@
       "description": "As a user, I want the audit to convert the generated PRD to prd.json so I can run ralph immediately.",
       "id": "US-019",
       "notes": "Follow prd.json format from skills/ralph/SKILL.md",
-      "passes": false,
+      "passes": true,
       "priority": 19,
       "title": "Implement PRD-to-prd.json conversion"
     },
