@@ -7,6 +7,11 @@ use crate::mcp::resources::{
     list_ralph_resources, read_prd_resource, read_status_resource, ResourceError, PRD_RESOURCE_URI,
     STATUS_RESOURCE_URI,
 };
+use crate::mcp::tools::audit::{
+    all_sections, create_error_response as create_audit_error_response,
+    create_success_response as create_audit_success_response, generate_audit_id,
+    resolve_audit_path, AuditOutputFormat, AuditState, StartAuditError, StartAuditRequest,
+};
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::get_status::{GetStatusRequest, GetStatusResponse};
 use crate::mcp::tools::list_stories::{load_stories, ListStoriesRequest, ListStoriesResponse};
@@ -798,6 +803,84 @@ impl RalphMcpServer {
                 format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
             })
         }
+    }
+
+    /// Start a codebase audit.
+    ///
+    /// This tool initiates an audit of the codebase, analyzing various aspects
+    /// such as file structure, dependencies, architecture patterns, and more.
+    ///
+    /// # Parameters
+    ///
+    /// * `path` - Optional path to the directory to audit. Defaults to the PRD directory
+    ///   if a PRD is loaded, otherwise uses the current working directory.
+    /// * `sections` - Optional list of sections to analyze. If not provided, all sections
+    ///   are analyzed. Valid sections: inventory, dependencies, architecture, testing,
+    ///   documentation, api, tech_debt, opportunities.
+    /// * `format` - Optional output format: json (default), markdown, or agent_context.
+    ///
+    /// # Returns
+    ///
+    /// JSON object containing:
+    /// - `success`: Whether the audit was started successfully
+    /// - `audit_id`: Unique identifier for checking audit status
+    /// - `path`: The directory being audited
+    /// - `sections`: List of sections being analyzed
+    /// - `format`: The output format
+    /// - `message`: Status message
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The specified path does not exist
+    /// - The specified path is not a directory
+    /// - Audit initialization fails
+    #[tool(
+        name = "start_audit",
+        description = "Start a codebase audit. Analyzes file structure, dependencies, architecture patterns, testing, documentation, and identifies opportunities. Returns an audit_id for status checking."
+    )]
+    pub async fn start_audit(&self, Parameters(req): Parameters<StartAuditRequest>) -> String {
+        // Get the PRD path from state for path resolution
+        let prd_path = {
+            let state = self.state.read().await;
+            state.prd_path.clone()
+        };
+
+        // Resolve the audit path
+        let audit_path = match resolve_audit_path(req.path.as_deref(), prd_path.as_ref()) {
+            Ok(path) => path,
+            Err(e) => {
+                let response = create_audit_error_response(&e);
+                return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {
+                    format!("{{\"error\": \"Failed to serialize response: {}\"}}", e)
+                });
+            }
+        };
+
+        // Determine sections to analyze
+        let sections = req.sections.unwrap_or_else(all_sections);
+
+        // Determine output format
+        let format = req.format.unwrap_or(AuditOutputFormat::Json);
+
+        // Generate audit ID
+        let audit_id = generate_audit_id();
+
+        // Create audit state
+        let audit_state = AuditState {
+            audit_id: audit_id.clone(),
+            path: audit_path,
+            sections,
+            format,
+            started_at: crate::mcp::tools::audit::current_timestamp(),
+            completed: false,
+            error: None,
+        };
+
+        // Create success response
+        let response = create_audit_success_response(&audit_state);
+        serde_json::to_string_pretty(&response)
+            .unwrap_or_else(|e| format!("{{\"error\": \"Failed to serialize response: {}\"}}", e))
     }
 }
 
@@ -1911,5 +1994,225 @@ mod tests {
             }
             _ => panic!("Expected TextResourceContents"),
         }
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_with_path() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert!(json["audit_id"].as_str().unwrap().starts_with("audit-"));
+        assert!(json["path"]
+            .as_str()
+            .unwrap()
+            .contains(temp_dir.path().to_str().unwrap()));
+        assert!(json["sections"].is_array());
+        assert_eq!(json["format"], "json");
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_with_sections() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        use crate::mcp::tools::audit::AuditSection;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: Some(vec![AuditSection::Inventory, AuditSection::Dependencies]),
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        let sections = json["sections"].as_array().unwrap();
+        assert_eq!(sections.len(), 2);
+        assert!(sections.contains(&serde_json::json!("inventory")));
+        assert!(sections.contains(&serde_json::json!("dependencies")));
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_with_format() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        use crate::mcp::tools::audit::AuditOutputFormat;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: Some(AuditOutputFormat::Markdown),
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        assert_eq!(json["format"], "markdown");
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_invalid_path() {
+        use rmcp::handler::server::wrapper::Parameters;
+
+        let server = RalphMcpServer::new();
+
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some("/nonexistent/path/to/directory".to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], false);
+        assert!(json["message"].as_str().unwrap().contains("not found"));
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_uses_prd_directory() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use std::io::Write;
+        use tempfile::TempDir;
+
+        let temp_dir = TempDir::new().unwrap();
+        let prd_path = temp_dir.path().join("prd.json");
+
+        // Create a PRD file
+        let mut file = std::fs::File::create(&prd_path).unwrap();
+        file.write_all(
+            br#"{"project": "Test", "branchName": "main", "userStories": [{"id": "US-001", "title": "Test", "priority": 1, "passes": false}]}"#,
+        )
+        .unwrap();
+
+        // Create server with PRD
+        let server = RalphMcpServer::with_prd(prd_path);
+
+        // Start audit without specifying path
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: None,
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        // Path should be the temp directory (parent of PRD)
+        assert!(json["path"]
+            .as_str()
+            .unwrap()
+            .contains(temp_dir.path().to_str().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_fallback_to_cwd() {
+        use rmcp::handler::server::wrapper::Parameters;
+
+        let server = RalphMcpServer::new();
+
+        // Start audit without path or PRD - should use current directory
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: None,
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        // Should use current working directory
+        let cwd = std::env::current_dir().unwrap();
+        assert!(json["path"]
+            .as_str()
+            .unwrap()
+            .contains(cwd.to_str().unwrap()));
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_all_sections_by_default() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        let result = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse the result as JSON
+        let json: serde_json::Value = serde_json::from_str(&result).unwrap();
+        assert_eq!(json["success"], true);
+        let sections = json["sections"].as_array().unwrap();
+        // Should have all 8 sections
+        assert_eq!(sections.len(), 8);
+    }
+
+    #[tokio::test]
+    async fn test_start_audit_unique_ids() {
+        use rmcp::handler::server::wrapper::Parameters;
+        use tempfile::TempDir;
+
+        let server = RalphMcpServer::new();
+        let temp_dir = TempDir::new().unwrap();
+
+        // Start two audits
+        let result1 = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        let result2 = server
+            .start_audit(Parameters(StartAuditRequest {
+                path: Some(temp_dir.path().to_string_lossy().to_string()),
+                sections: None,
+                format: None,
+            }))
+            .await;
+
+        // Parse results
+        let json1: serde_json::Value = serde_json::from_str(&result1).unwrap();
+        let json2: serde_json::Value = serde_json::from_str(&result2).unwrap();
+
+        // IDs should be different
+        assert_ne!(json1["audit_id"], json2["audit_id"]);
     }
 }

@@ -345,7 +345,7 @@
       "description": "As a user, I want to type /audit in Claude Code so I can run an interactive audit.",
       "id": "US-020",
       "notes": "Reference skills/prd/SKILL.md and skills/ralph/SKILL.md as templates",
-      "passes": false,
+      "passes": true,
       "priority": 20,
       "title": "Create /audit skill for Claude Code"
     },
