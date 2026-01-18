@@ -54,3 +54,16 @@ Started: Sat Jan 17 21:41:00 MST 2026
   - MascotRenderer.render_with_quote() renders mascot art with a random quote below
   - Tests use `predicate::str::contains()` which is case-sensitive; use `.or()` for alternatives
 ---
+
+## 2026-01-17 - US-004
+- What was implemented: Created iteration view component module
+- Files changed:
+  - src/ui/iteration_view.rs: New module with IterationPreview struct and 7 unit tests
+  - src/ui/mod.rs: Added iteration_view module and exported IterationPreview
+- **Learnings for future iterations:**
+  - IterationPreview shows gates to run with arrow separator: "Will run: build → lint → test"
+  - Use `→` (unicode arrow) instead of `->` for better visual appearance in terminal
+  - render() returns full output with "Will run:" prefix, render_compact() returns just gate chain
+  - Empty gates list handled gracefully with "No gates configured" message
+  - Follow the quality_gates.rs pattern: struct with Theme, constructor methods, and render methods
+---
