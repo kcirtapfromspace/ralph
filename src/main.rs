@@ -1,4 +1,4 @@
-use clap::{Parser, ValueEnum};
+use clap::{ArgAction, Parser, ValueEnum};
 use rmcp::{transport::stdio, ServiceExt};
 use std::path::PathBuf;
 
@@ -66,6 +66,10 @@ struct Cli {
     #[arg(long, short)]
     quiet: bool,
 
+    /// Increase verbosity (-v, -vv, -vvv)
+    #[arg(long, short, action = ArgAction::Count, conflicts_with = "quiet")]
+    verbose: u8,
+
     /// Print help information with styled output
     #[arg(long, short)]
     help: bool,
@@ -85,6 +89,14 @@ struct Cli {
     /// Maximum iterations per story
     #[arg(long, default_value = "10")]
     max_iterations: u32,
+
+    /// Enable parallel story execution
+    #[arg(long)]
+    parallel: bool,
+
+    /// Max concurrent stories (0 = unlimited)
+    #[arg(long, default_value = "3")]
+    max_concurrency: usize,
 
     #[command(subcommand)]
     command: Option<Commands>,
@@ -106,6 +118,14 @@ enum Commands {
         /// Maximum iterations per story
         #[arg(long, default_value = "10")]
         max_iterations: u32,
+
+        /// Enable parallel story execution
+        #[arg(long)]
+        parallel: bool,
+
+        /// Max concurrent stories (0 = unlimited)
+        #[arg(long, default_value = "3")]
+        max_concurrency: usize,
 
         /// Print help information
         #[arg(long, short)]
@@ -169,6 +189,9 @@ fn build_display_options(cli: &Cli) -> DisplayOptions {
         .with_ui_mode(cli.ui.into())
         .with_color(!cli.no_color)
         .with_quiet(cli.quiet)
+        .with_verbosity(cli.verbose)
+        .with_streaming(true) // Streaming is now default
+        .with_expand_details(cli.verbose >= 1) // Expand details at -v or higher
 }
 
 #[tokio::main]
@@ -207,6 +230,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("  -p, --prd <FILE>         Path to PRD file [default: prd.json]");
             println!("  -d, --dir <DIR>          Working directory");
             println!("  --max-iterations <N>     Max iterations per story [default: 10]");
+            println!("  --parallel               Enable parallel story execution");
+            println!(
+                "  --max-concurrency <N>    Max concurrent stories (0 = unlimited) [default: 3]"
+            );
             println!("  -h, --help               Print help information");
             return Ok(());
         }
@@ -214,9 +241,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             ref prd,
             ref dir,
             max_iterations,
+            parallel,
+            max_concurrency,
             help: false,
         }) => {
-            run_stories(&cli, prd.clone(), dir.clone(), max_iterations).await?;
+            run_stories(
+                &cli,
+                prd.clone(),
+                dir.clone(),
+                max_iterations,
+                parallel,
+                max_concurrency,
+            )
+            .await?;
         }
         Some(Commands::Quality { help: true }) => {
             println!("Run quality checks (typecheck, lint, test)");
@@ -321,7 +358,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             // Check multiple locations: prd.json, ralph/prd.json
             let prd_path = find_prd_file(&cli.prd);
             if let Some(prd) = prd_path {
-                run_stories(&cli, prd, cli.dir.clone(), cli.max_iterations).await?;
+                run_stories(
+                    &cli,
+                    prd,
+                    cli.dir.clone(),
+                    cli.max_iterations,
+                    cli.parallel,
+                    cli.max_concurrency,
+                )
+                .await?;
             } else {
                 print!("{}", help_renderer.render_help());
             }
@@ -359,8 +404,24 @@ async fn run_stories(
     prd: PathBuf,
     dir: Option<PathBuf>,
     max_iterations: u32,
+    parallel: bool,
+    max_concurrency: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    use crate::parallel::scheduler::ParallelRunnerConfig;
+
     let working_dir = dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
+    let display_options = build_display_options(cli);
+
+    // Build parallel config with the specified max_concurrency
+    // 0 means unlimited, which we represent with usize::MAX
+    let parallel_config = ParallelRunnerConfig {
+        max_concurrency: if max_concurrency == 0 {
+            u32::MAX
+        } else {
+            max_concurrency as u32
+        },
+        ..Default::default()
+    };
 
     let config = RunnerConfig {
         prd_path: if prd.is_absolute() {
@@ -372,7 +433,9 @@ async fn run_stories(
         max_iterations_per_story: max_iterations,
         max_total_iterations: 0, // unlimited
         agent_command: None,     // auto-detect
-        quiet: cli.quiet,
+        display_options,
+        parallel,
+        parallel_config: Some(parallel_config),
     };
 
     let runner = Runner::new(config);
