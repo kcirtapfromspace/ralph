@@ -73,8 +73,26 @@ impl Runner {
         Self { config }
     }
 
-    /// Run all stories until all pass or an error occurs
+    /// Run all stories until all pass or an error occurs.
+    ///
+    /// Routes to parallel or sequential execution based on config.parallel.
     pub async fn run(&self) -> RunResult {
+        if self.config.parallel {
+            // Use parallel execution
+            let parallel_config = self.config.parallel_config.clone().unwrap_or_default();
+            let parallel_runner = crate::parallel::scheduler::ParallelRunner::new(
+                parallel_config,
+                self.config.clone(),
+            );
+            parallel_runner.run().await
+        } else {
+            // Use sequential execution
+            self.run_sequential().await
+        }
+    }
+
+    /// Run all stories sequentially until all pass or an error occurs
+    async fn run_sequential(&self) -> RunResult {
         let mut total_iterations: u32 = 0;
 
         // Create TUI display

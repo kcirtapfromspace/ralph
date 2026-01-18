@@ -344,7 +344,7 @@
       "description": "As a developer, I need to enable parallel mode via config.",
       "id": "US-017",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 17,
       "targetFiles": [
         "src/runner.rs"

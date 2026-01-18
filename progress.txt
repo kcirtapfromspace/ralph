@@ -193,3 +193,15 @@ Feature: Parallel Story Execution
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 11:21 - US-017
+- **What was implemented**: Add parallel field to RunnerConfig
+- **Files changed**:
+  - rd.json
+  - rogress.txt
+  - rc/main.rs
+  - rc/runner.rs
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---
