@@ -26,3 +26,17 @@ Started: Sat Jan 17 21:41:00 MST 2026
   - Missing dependency `ctrlc` caused build failure - always run `cargo check` before assuming code works
   - US-002 (PeekAnimation) and US-003 (HelpRenderer integration) appear to already be implemented in the existing code
 ---
+
+## 2026-01-17 - US-002
+- What was implemented: Verified existing peek animation and MascotRenderer implementation
+- Files changed:
+  - No code changes needed - implementation was already included in US-001 commit (90b7f39)
+  - prd.json (marked US-002 as passes: true)
+- **Learnings for future iterations:**
+  - The mascot.rs module includes complete PeekAnimation with PEEK_FRAMES constants (5 frames per mascot)
+  - AnimationConfig provides configurable frame_delay_ms (default 80ms)
+  - PeekAnimation.play() uses ANSI escape codes: `\x1b[?25l` (hide cursor), `\x1b[?25h` (show cursor)
+  - Ghostty sync uses `\x1b[?2026h` (begin) and `\x1b[?2026l` (end) for flicker-free rendering
+  - MascotRenderer provides render_with_quote() and render_beside_content() methods
+  - 12 dedicated mascot tests all passing
+---
