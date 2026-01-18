@@ -407,7 +407,7 @@ async fn run_stories(
     parallel: bool,
     max_concurrency: usize,
 ) -> Result<(), Box<dyn std::error::Error>> {
-    use crate::parallel::scheduler::ParallelRunnerConfig;
+    use ralphmacchio::parallel::scheduler::ParallelRunnerConfig;
 
     let working_dir = dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_default());
     let display_options = build_display_options(cli);

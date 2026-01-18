@@ -6,6 +6,7 @@
 pub mod audit;
 pub mod integrations;
 pub mod mcp;
+pub mod parallel;
 pub mod quality;
 pub mod runner;
 pub mod ui;
