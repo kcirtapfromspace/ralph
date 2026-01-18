@@ -141,7 +141,7 @@ impl RalphMcpServer {
     /// # Examples
     ///
     /// ```
-    /// use ralph::mcp::RalphMcpServer;
+    /// use ralphmacchio::mcp::RalphMcpServer;
     ///
     /// let server = RalphMcpServer::new();
     /// ```
@@ -185,7 +185,7 @@ impl RalphMcpServer {
     /// # Examples
     ///
     /// ```
-    /// use ralph::mcp::RalphMcpServer;
+    /// use ralphmacchio::mcp::RalphMcpServer;
     /// use std::path::PathBuf;
     ///
     /// let server = RalphMcpServer::with_prd(PathBuf::from("prd.json"));
@@ -217,8 +217,8 @@ impl RalphMcpServer {
     /// # Examples
     ///
     /// ```no_run
-    /// use ralph::mcp::RalphMcpServer;
-    /// use ralph::quality::QualityConfig;
+    /// use ralphmacchio::mcp::RalphMcpServer;
+    /// use ralphmacchio::quality::QualityConfig;
     ///
     /// let config = QualityConfig::load("quality/ralph-quality.toml").unwrap();
     /// let server = RalphMcpServer::with_config(config);
@@ -246,8 +246,8 @@ impl RalphMcpServer {
     /// # Examples
     ///
     /// ```
-    /// use ralph::mcp::RalphMcpServer;
-    /// use ralph::ui::{DisplayOptions, UiMode};
+    /// use ralphmacchio::mcp::RalphMcpServer;
+    /// use ralphmacchio::ui::{DisplayOptions, UiMode};
     ///
     /// let options = DisplayOptions::new()
     ///     .with_ui_mode(UiMode::Enabled)
@@ -279,8 +279,8 @@ impl RalphMcpServer {
     /// # Examples
     ///
     /// ```
-    /// use ralph::mcp::RalphMcpServer;
-    /// use ralph::ui::{DisplayOptions, UiMode};
+    /// use ralphmacchio::mcp::RalphMcpServer;
+    /// use ralphmacchio::ui::{DisplayOptions, UiMode};
     /// use std::path::PathBuf;
     ///
     /// let options = DisplayOptions::new().with_quiet(true);

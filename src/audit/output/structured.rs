@@ -44,7 +44,7 @@ impl JsonReportWriter {
     ///
     /// ```no_run
     /// use std::path::PathBuf;
-    /// use ralph::audit::{AuditReport, output::JsonReportWriter};
+    /// use ralphmacchio::audit::{AuditReport, output::JsonReportWriter};
     ///
     /// let report = AuditReport::new(PathBuf::from("/project"));
     /// JsonReportWriter::write_to_file(&report, "audit.json").unwrap();

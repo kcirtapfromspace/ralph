@@ -40,7 +40,7 @@ impl MarkdownReportWriter {
     ///
     /// ```no_run
     /// use std::path::PathBuf;
-    /// use ralph::audit::{AuditReport, output::MarkdownReportWriter};
+    /// use ralphmacchio::audit::{AuditReport, output::MarkdownReportWriter};
     ///
     /// let report = AuditReport::new(PathBuf::from("/project"));
     /// MarkdownReportWriter::write_to_file(&report, "audit.md").unwrap();

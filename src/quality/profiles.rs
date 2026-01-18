@@ -243,10 +243,10 @@ impl QualityConfig {
     /// # Examples
     ///
     /// ```no_run
-    /// use ralph::quality::QualityConfig;
+    /// use ralphmacchio::quality::QualityConfig;
     ///
     /// let config = QualityConfig::load("quality/ralph-quality.toml")?;
-    /// # Ok::<(), ralph::quality::profiles::QualityConfigError>(())
+    /// # Ok::<(), ralphmacchio::quality::profiles::QualityConfigError>(())
     /// ```
     pub fn load<P: AsRef<Path>>(path: P) -> Result<Self, QualityConfigError> {
         let path = path.as_ref();

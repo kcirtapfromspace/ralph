@@ -156,8 +156,8 @@ impl AgentContextWriter {
     /// # Example
     ///
     /// ```no_run
-    /// use ralph::audit::output::AgentContextWriter;
-    /// use ralph::audit::output::AgentContext;
+    /// use ralphmacchio::audit::output::AgentContextWriter;
+    /// use ralphmacchio::audit::output::AgentContext;
     ///
     /// let context = AgentContext::new()
     ///     .with_primary_language("Rust")
