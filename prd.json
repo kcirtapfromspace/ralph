@@ -1,58 +1,64 @@
 {
-  "project": "Ralph",
   "branchName": "ralph/parallel-execution",
   "description": "Add parallel story execution to Ralph - dependency graph, conflict detection, and reconciliation",
+  "project": "Ralph",
   "userStories": [
     {
-      "id": "US-001",
-      "title": "Add petgraph dependency",
-      "description": "As a developer, I need the petgraph crate added to Cargo.toml so I can build dependency graphs.",
       "acceptanceCriteria": [
         "Add petgraph = \"0.6\" to Cargo.toml dependencies",
         "Run cargo fetch to download the crate",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 1,
-      "passes": false,
+      "description": "As a developer, I need the petgraph crate added to Cargo.toml so I can build dependency graphs.",
+      "id": "US-001",
       "notes": "Foundation dependency for DAG operations",
-      "targetFiles": ["Cargo.toml", "Cargo.lock"]
+      "passes": true,
+      "priority": 1,
+      "targetFiles": [
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "title": "Add petgraph dependency"
     },
     {
-      "id": "US-002",
-      "title": "Extend PrdUserStory with dependsOn field",
-      "description": "As a PRD author, I want to specify explicit story dependencies.",
       "acceptanceCriteria": [
         "Add `dependsOn: Vec<String>` field to PrdUserStory struct with serde default",
         "Field is optional - existing PRDs without it continue to work",
         "Add unit test verifying deserialization with and without dependsOn",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 2,
-      "passes": false,
+      "dependsOn": [],
+      "description": "As a PRD author, I want to specify explicit story dependencies.",
+      "id": "US-002",
       "notes": "",
-      "targetFiles": ["src/mcp/tools/load_prd.rs"],
-      "dependsOn": []
+      "passes": false,
+      "priority": 2,
+      "targetFiles": [
+        "src/mcp/tools/load_prd.rs"
+      ],
+      "title": "Extend PrdUserStory with dependsOn field"
     },
     {
-      "id": "US-003",
-      "title": "Extend PrdUserStory with targetFiles field",
-      "description": "As a PRD author, I want to specify which files a story will modify for conflict detection.",
       "acceptanceCriteria": [
         "Add `targetFiles: Vec<String>` field to PrdUserStory struct with serde default",
         "Field is optional - existing PRDs without it continue to work",
         "Add unit test verifying deserialization with and without targetFiles",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 3,
-      "passes": false,
+      "dependsOn": [
+        "US-002"
+      ],
+      "description": "As a PRD author, I want to specify which files a story will modify for conflict detection.",
+      "id": "US-003",
       "notes": "",
-      "targetFiles": ["src/mcp/tools/load_prd.rs"],
-      "dependsOn": ["US-002"]
+      "passes": false,
+      "priority": 3,
+      "targetFiles": [
+        "src/mcp/tools/load_prd.rs"
+      ],
+      "title": "Extend PrdUserStory with targetFiles field"
     },
     {
-      "id": "US-004",
-      "title": "Create parallel module structure",
-      "description": "As a developer, I need the parallel module directory and mod.rs created.",
       "acceptanceCriteria": [
         "Create src/parallel/mod.rs with submodule declarations",
         "Declare submodules: dependency, inference, scheduler, conflict, reconcile",
@@ -60,32 +66,42 @@
         "Create empty placeholder files for each submodule",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 4,
-      "passes": false,
+      "dependsOn": [
+        "US-001"
+      ],
+      "description": "As a developer, I need the parallel module directory and mod.rs created.",
+      "id": "US-004",
       "notes": "",
-      "targetFiles": ["src/parallel/mod.rs", "src/lib.rs"],
-      "dependsOn": ["US-001"]
+      "passes": false,
+      "priority": 4,
+      "targetFiles": [
+        "src/parallel/mod.rs",
+        "src/lib.rs"
+      ],
+      "title": "Create parallel module structure"
     },
     {
-      "id": "US-005",
-      "title": "Implement StoryNode struct",
-      "description": "As a developer, I need a struct to represent stories in the dependency graph.",
       "acceptanceCriteria": [
         "Create StoryNode struct with id, priority, passes, depends_on, target_files fields",
         "Implement From<&PrdUserStory> for StoryNode",
         "Add Clone, Debug derives",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 5,
-      "passes": false,
+      "dependsOn": [
+        "US-004",
+        "US-003"
+      ],
+      "description": "As a developer, I need a struct to represent stories in the dependency graph.",
+      "id": "US-005",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-004", "US-003"]
+      "passes": false,
+      "priority": 5,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Implement StoryNode struct"
     },
     {
-      "id": "US-006",
-      "title": "Implement DependencyGraph struct",
-      "description": "As a developer, I need a DAG data structure to hold story dependencies.",
       "acceptanceCriteria": [
         "Create DependencyGraph struct using petgraph::DiGraph",
         "Add id_to_node HashMap for O(1) node lookup by story ID",
@@ -93,16 +109,20 @@
         "Add edges based on dependsOn relationships",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 6,
-      "passes": false,
+      "dependsOn": [
+        "US-005"
+      ],
+      "description": "As a developer, I need a DAG data structure to hold story dependencies.",
+      "id": "US-006",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-005"]
+      "passes": false,
+      "priority": 6,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Implement DependencyGraph struct"
     },
     {
-      "id": "US-007",
-      "title": "Implement cycle detection in DependencyGraph",
-      "description": "As a developer, I need to detect circular dependencies which are invalid.",
       "acceptanceCriteria": [
         "Implement validate() method that returns Result<(), DependencyError>",
         "Use petgraph::algo::is_cyclic_directed to detect cycles",
@@ -111,16 +131,20 @@
         "Add unit test with valid DAG that should pass",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 7,
-      "passes": false,
+      "dependsOn": [
+        "US-006"
+      ],
+      "description": "As a developer, I need to detect circular dependencies which are invalid.",
+      "id": "US-007",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-006"]
+      "passes": false,
+      "priority": 7,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Implement cycle detection in DependencyGraph"
     },
     {
-      "id": "US-008",
-      "title": "Implement topological sort in DependencyGraph",
-      "description": "As a developer, I need to get a valid execution order respecting dependencies.",
       "acceptanceCriteria": [
         "Implement topological_order() returning Result<Vec<String>, DependencyError>",
         "Use petgraph::algo::toposort",
@@ -128,47 +152,58 @@
         "Add unit test verifying correct order for multi-level dependencies",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 8,
-      "passes": false,
+      "dependsOn": [
+        "US-007"
+      ],
+      "description": "As a developer, I need to get a valid execution order respecting dependencies.",
+      "id": "US-008",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-007"]
+      "passes": false,
+      "priority": 8,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Implement topological sort in DependencyGraph"
     },
     {
-      "id": "US-009",
-      "title": "Implement get_ready_stories in DependencyGraph",
-      "description": "As a scheduler, I need to know which stories can execute now.",
       "acceptanceCriteria": [
         "Implement get_ready_stories(&self, completed: &HashSet<String>) -> Vec<&StoryNode>",
         "Returns stories where: not passed, not in completed set, all dependencies in completed set",
         "Add unit test with partially completed stories",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 9,
-      "passes": false,
+      "dependsOn": [
+        "US-008"
+      ],
+      "description": "As a scheduler, I need to know which stories can execute now.",
+      "id": "US-009",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-008"]
+      "passes": false,
+      "priority": 9,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Implement get_ready_stories in DependencyGraph"
     },
     {
-      "id": "US-010",
-      "title": "Add glob dependency for pattern matching",
-      "description": "As a developer, I need glob pattern matching for targetFiles.",
       "acceptanceCriteria": [
         "Add glob = \"0.3\" to Cargo.toml dependencies",
         "Run cargo fetch to download the crate",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 10,
-      "passes": false,
+      "dependsOn": [],
+      "description": "As a developer, I need glob pattern matching for targetFiles.",
+      "id": "US-010",
       "notes": "",
-      "targetFiles": ["Cargo.toml", "Cargo.lock"],
-      "dependsOn": []
+      "passes": false,
+      "priority": 10,
+      "targetFiles": [
+        "Cargo.toml",
+        "Cargo.lock"
+      ],
+      "title": "Add glob dependency for pattern matching"
     },
     {
-      "id": "US-011",
-      "title": "Implement file-based dependency inference",
-      "description": "As a user, I want dependencies auto-inferred from targetFiles overlap.",
       "acceptanceCriteria": [
         "Implement infer_from_files(stories: &[StoryNode]) -> Vec<(String, String)> in inference.rs",
         "When story A and B have overlapping targetFiles patterns, higher priority becomes dependency",
@@ -176,16 +211,21 @@
         "Add unit test with overlapping patterns like src/**/*.rs",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 11,
-      "passes": false,
+      "dependsOn": [
+        "US-010",
+        "US-009"
+      ],
+      "description": "As a user, I want dependencies auto-inferred from targetFiles overlap.",
+      "id": "US-011",
       "notes": "",
-      "targetFiles": ["src/parallel/inference.rs"],
-      "dependsOn": ["US-010", "US-009"]
+      "passes": false,
+      "priority": 11,
+      "targetFiles": [
+        "src/parallel/inference.rs"
+      ],
+      "title": "Implement file-based dependency inference"
     },
     {
-      "id": "US-012",
-      "title": "Integrate inferred dependencies into DependencyGraph",
-      "description": "As a developer, I need inferred dependencies added to the graph.",
       "acceptanceCriteria": [
         "Add infer_dependencies(&mut self) method to DependencyGraph",
         "Call infer_from_files and add resulting edges to graph",
@@ -193,48 +233,61 @@
         "Add unit test showing inferred edge added correctly",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 12,
-      "passes": false,
+      "dependsOn": [
+        "US-011"
+      ],
+      "description": "As a developer, I need inferred dependencies added to the graph.",
+      "id": "US-012",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs", "src/parallel/inference.rs"],
-      "dependsOn": ["US-011"]
+      "passes": false,
+      "priority": 12,
+      "targetFiles": [
+        "src/parallel/dependency.rs",
+        "src/parallel/inference.rs"
+      ],
+      "title": "Integrate inferred dependencies into DependencyGraph"
     },
     {
-      "id": "US-013",
-      "title": "Implement ParallelRunnerConfig struct",
-      "description": "As a developer, I need configuration options for parallel execution.",
       "acceptanceCriteria": [
         "Create ParallelRunnerConfig struct with max_concurrency (default 3), infer_dependencies (default true), fallback_to_sequential (default true)",
         "Implement Default trait",
         "Add Clone, Debug derives",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 13,
-      "passes": false,
+      "dependsOn": [
+        "US-004"
+      ],
+      "description": "As a developer, I need configuration options for parallel execution.",
+      "id": "US-013",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-004"]
+      "passes": false,
+      "priority": 13,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement ParallelRunnerConfig struct"
     },
     {
-      "id": "US-014",
-      "title": "Implement ParallelExecutionState struct",
-      "description": "As a scheduler, I need to track execution state across parallel stories.",
       "acceptanceCriteria": [
         "Create ParallelExecutionState with in_flight, completed, failed HashMaps/Sets",
         "Add locked_files: HashMap<PathBuf, String> for file locking",
         "Implement Default trait",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 14,
-      "passes": false,
+      "dependsOn": [
+        "US-013"
+      ],
+      "description": "As a scheduler, I need to track execution state across parallel stories.",
+      "id": "US-014",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-013"]
+      "passes": false,
+      "priority": 14,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement ParallelExecutionState struct"
     },
     {
-      "id": "US-015",
-      "title": "Implement ParallelRunner struct skeleton",
-      "description": "As a developer, I need the main parallel runner structure.",
       "acceptanceCriteria": [
         "Create ParallelRunner struct with config, base_config, semaphore, execution_state fields",
         "Implement new() constructor taking ParallelRunnerConfig and RunnerConfig",
@@ -242,16 +295,20 @@
         "Use Arc<RwLock<ParallelExecutionState>> for shared state",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 15,
-      "passes": false,
+      "dependsOn": [
+        "US-014"
+      ],
+      "description": "As a developer, I need the main parallel runner structure.",
+      "id": "US-015",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-014"]
+      "passes": false,
+      "priority": 15,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement ParallelRunner struct skeleton"
     },
     {
-      "id": "US-016",
-      "title": "Implement ParallelRunner::run main loop",
-      "description": "As a user, I want parallel story execution.",
       "acceptanceCriteria": [
         "Implement async run(&self) -> RunResult method",
         "Load PRD and build DependencyGraph with inference",
@@ -260,32 +317,41 @@
         "Return RunResult with all_passed, stories_passed, total_stories",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 16,
-      "passes": false,
+      "dependsOn": [
+        "US-015",
+        "US-012"
+      ],
+      "description": "As a user, I want parallel story execution.",
+      "id": "US-016",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-015", "US-012"]
+      "passes": false,
+      "priority": 16,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement ParallelRunner::run main loop"
     },
     {
-      "id": "US-017",
-      "title": "Add parallel field to RunnerConfig",
-      "description": "As a developer, I need to enable parallel mode via config.",
       "acceptanceCriteria": [
         "Add parallel: bool field to RunnerConfig (default false)",
         "Add parallel_config: Option<ParallelRunnerConfig> field",
         "Update Default implementation",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 17,
-      "passes": false,
+      "dependsOn": [
+        "US-013"
+      ],
+      "description": "As a developer, I need to enable parallel mode via config.",
+      "id": "US-017",
       "notes": "",
-      "targetFiles": ["src/runner.rs"],
-      "dependsOn": ["US-013"]
+      "passes": false,
+      "priority": 17,
+      "targetFiles": [
+        "src/runner.rs"
+      ],
+      "title": "Add parallel field to RunnerConfig"
     },
     {
-      "id": "US-018",
-      "title": "Route Runner to ParallelRunner when enabled",
-      "description": "As a user, I want to use parallel execution when configured.",
       "acceptanceCriteria": [
         "Modify Runner::run() to check config.parallel",
         "If parallel=true, create ParallelRunner and call run()",
@@ -293,32 +359,41 @@
         "Move current run() body to run_sequential() method",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 18,
-      "passes": false,
+      "dependsOn": [
+        "US-017",
+        "US-016"
+      ],
+      "description": "As a user, I want to use parallel execution when configured.",
+      "id": "US-018",
       "notes": "",
-      "targetFiles": ["src/runner.rs"],
-      "dependsOn": ["US-017", "US-016"]
+      "passes": false,
+      "priority": 18,
+      "targetFiles": [
+        "src/runner.rs"
+      ],
+      "title": "Route Runner to ParallelRunner when enabled"
     },
     {
-      "id": "US-019",
-      "title": "Add --parallel CLI flag",
-      "description": "As a developer, I want to enable parallel execution from CLI.",
       "acceptanceCriteria": [
         "#[arg(long)] parallel: bool flag added to CLI struct",
         "Pass value to RunnerConfig.parallel",
         "Help text: 'Enable parallel story execution'",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 19,
-      "passes": false,
+      "dependsOn": [
+        "US-018"
+      ],
+      "description": "As a developer, I want to enable parallel execution from CLI.",
+      "id": "US-019",
       "notes": "",
-      "targetFiles": ["src/main.rs"],
-      "dependsOn": ["US-018"]
+      "passes": false,
+      "priority": 19,
+      "targetFiles": [
+        "src/main.rs"
+      ],
+      "title": "Add --parallel CLI flag"
     },
     {
-      "id": "US-020",
-      "title": "Add --max-concurrency CLI flag",
-      "description": "As a developer, I want to control parallel concurrency from CLI.",
       "acceptanceCriteria": [
         "#[arg(long, default_value = \"3\")] max_concurrency: usize flag",
         "Pass value to ParallelRunnerConfig.max_concurrency",
@@ -326,16 +401,20 @@
         "Help text: 'Max concurrent stories (0 = unlimited)'",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 20,
-      "passes": false,
+      "dependsOn": [
+        "US-019"
+      ],
+      "description": "As a developer, I want to control parallel concurrency from CLI.",
+      "id": "US-020",
       "notes": "",
-      "targetFiles": ["src/main.rs"],
-      "dependsOn": ["US-019"]
+      "passes": false,
+      "priority": 20,
+      "targetFiles": [
+        "src/main.rs"
+      ],
+      "title": "Add --max-concurrency CLI flag"
     },
     {
-      "id": "US-021",
-      "title": "Implement file locking in ParallelRunner",
-      "description": "As a developer, I need file locks to prevent concurrent modification.",
       "acceptanceCriteria": [
         "Before executing story, acquire locks on its targetFiles patterns",
         "If any file already locked by another story, skip this story for now",
@@ -343,48 +422,60 @@
         "Add acquire_locks and release_locks methods to ParallelExecutionState",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 21,
-      "passes": false,
+      "dependsOn": [
+        "US-016"
+      ],
+      "description": "As a developer, I need file locks to prevent concurrent modification.",
+      "id": "US-021",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-016"]
+      "passes": false,
+      "priority": 21,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement file locking in ParallelRunner"
     },
     {
-      "id": "US-022",
-      "title": "Add git operation mutex",
-      "description": "As a developer, I need to serialize git operations across parallel stories.",
       "acceptanceCriteria": [
         "Add git_mutex: Arc<tokio::sync::Mutex<()>> to ParallelRunner",
         "Wrap git add/commit operations in mutex lock",
         "Prevents concurrent git operations that could corrupt repo",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 22,
-      "passes": false,
+      "dependsOn": [
+        "US-021"
+      ],
+      "description": "As a developer, I need to serialize git operations across parallel stories.",
+      "id": "US-022",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-021"]
+      "passes": false,
+      "priority": 22,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Add git operation mutex"
     },
     {
-      "id": "US-023",
-      "title": "Implement ConflictStrategy enum",
-      "description": "As a developer, I need different conflict detection strategies.",
       "acceptanceCriteria": [
         "Create ConflictStrategy enum with variants: FileBased, EntityBased, None",
         "Add to ParallelRunnerConfig with default FileBased",
         "Implement Clone, Debug, Default derives",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 23,
-      "passes": false,
+      "dependsOn": [
+        "US-004"
+      ],
+      "description": "As a developer, I need different conflict detection strategies.",
+      "id": "US-023",
       "notes": "EntityBased requires tree-sitter, implement in later story",
-      "targetFiles": ["src/parallel/conflict.rs"],
-      "dependsOn": ["US-004"]
+      "passes": false,
+      "priority": 23,
+      "targetFiles": [
+        "src/parallel/conflict.rs"
+      ],
+      "title": "Implement ConflictStrategy enum"
     },
     {
-      "id": "US-024",
-      "title": "Implement file-based conflict detection",
-      "description": "As a developer, I need to detect when parallel stories modify same files.",
       "acceptanceCriteria": [
         "Create ConflictDetector struct with strategy field",
         "Implement detect_file_conflicts(a: &ExecutionResult, b: &ExecutionResult) -> Vec<Conflict>",
@@ -392,32 +483,40 @@
         "Returns conflicts when files_changed sets overlap",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 24,
-      "passes": false,
+      "dependsOn": [
+        "US-023"
+      ],
+      "description": "As a developer, I need to detect when parallel stories modify same files.",
+      "id": "US-024",
       "notes": "",
-      "targetFiles": ["src/parallel/conflict.rs"],
-      "dependsOn": ["US-023"]
+      "passes": false,
+      "priority": 24,
+      "targetFiles": [
+        "src/parallel/conflict.rs"
+      ],
+      "title": "Implement file-based conflict detection"
     },
     {
-      "id": "US-025",
-      "title": "Implement sequential fallback on conflict",
-      "description": "As a user, I want conflicting stories to run sequentially instead of failing.",
       "acceptanceCriteria": [
         "When conflict detected pre-execution (overlapping targetFiles), don't run both in parallel",
         "Run higher-priority story first, then run conflicting story in next batch",
         "Log when fallback is triggered with story IDs",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 25,
-      "passes": false,
+      "dependsOn": [
+        "US-024"
+      ],
+      "description": "As a user, I want conflicting stories to run sequentially instead of failing.",
+      "id": "US-025",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-024"]
+      "passes": false,
+      "priority": 25,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Implement sequential fallback on conflict"
     },
     {
-      "id": "US-026",
-      "title": "Implement ReconciliationEngine skeleton",
-      "description": "As a developer, I need reconciliation infrastructure.",
       "acceptanceCriteria": [
         "Create ReconciliationEngine struct with project_root field",
         "Implement new(project_root: PathBuf) constructor",
@@ -425,32 +524,40 @@
         "Create ReconciliationIssue enum with GitConflict, TypeMismatch, ImportDuplicate variants",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 26,
-      "passes": false,
+      "dependsOn": [
+        "US-004"
+      ],
+      "description": "As a developer, I need reconciliation infrastructure.",
+      "id": "US-026",
       "notes": "",
-      "targetFiles": ["src/parallel/reconcile.rs"],
-      "dependsOn": ["US-004"]
+      "passes": false,
+      "priority": 26,
+      "targetFiles": [
+        "src/parallel/reconcile.rs"
+      ],
+      "title": "Implement ReconciliationEngine skeleton"
     },
     {
-      "id": "US-027",
-      "title": "Implement git conflict detection in reconciliation",
-      "description": "As a user, I want to know if parallel execution caused git merge conflicts.",
       "acceptanceCriteria": [
         "Implement check_git_conflicts() method in ReconciliationEngine",
         "Run git status and detect conflict markers",
         "Return GitConflict issues with affected file paths",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 27,
-      "passes": false,
+      "dependsOn": [
+        "US-026"
+      ],
+      "description": "As a user, I want to know if parallel execution caused git merge conflicts.",
+      "id": "US-027",
       "notes": "",
-      "targetFiles": ["src/parallel/reconcile.rs"],
-      "dependsOn": ["US-026"]
+      "passes": false,
+      "priority": 27,
+      "targetFiles": [
+        "src/parallel/reconcile.rs"
+      ],
+      "title": "Implement git conflict detection in reconciliation"
     },
     {
-      "id": "US-028",
-      "title": "Implement type check in reconciliation",
-      "description": "As a user, I want to verify code still compiles after parallel execution.",
       "acceptanceCriteria": [
         "Implement check_type_errors() method",
         "Run cargo check for Rust projects",
@@ -458,32 +565,41 @@
         "Return TypeMismatch issues with file and error",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 28,
-      "passes": false,
+      "dependsOn": [
+        "US-027"
+      ],
+      "description": "As a user, I want to verify code still compiles after parallel execution.",
+      "id": "US-028",
       "notes": "",
-      "targetFiles": ["src/parallel/reconcile.rs"],
-      "dependsOn": ["US-027"]
+      "passes": false,
+      "priority": 28,
+      "targetFiles": [
+        "src/parallel/reconcile.rs"
+      ],
+      "title": "Implement type check in reconciliation"
     },
     {
-      "id": "US-029",
-      "title": "Integrate reconciliation into ParallelRunner",
-      "description": "As a user, I want reconciliation to run after parallel batch completion.",
       "acceptanceCriteria": [
         "After each parallel batch completes, instantiate ReconciliationEngine",
         "Call reconcile() and log any issues found",
         "If issues found and fallback enabled, retry affected stories sequentially",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 29,
-      "passes": false,
+      "dependsOn": [
+        "US-028",
+        "US-025"
+      ],
+      "description": "As a user, I want reconciliation to run after parallel batch completion.",
+      "id": "US-029",
       "notes": "",
-      "targetFiles": ["src/parallel/scheduler.rs"],
-      "dependsOn": ["US-028", "US-025"]
+      "passes": false,
+      "priority": 29,
+      "targetFiles": [
+        "src/parallel/scheduler.rs"
+      ],
+      "title": "Integrate reconciliation into ParallelRunner"
     },
     {
-      "id": "US-030",
-      "title": "Add parallel config section to PrdFile",
-      "description": "As a PRD author, I want to configure parallelism in prd.json.",
       "acceptanceCriteria": [
         "Add ParallelConfig struct with enabled, max_concurrency, conflict_strategy, inference_mode",
         "Add parallel: Option<ParallelConfig> field to PrdFile with serde default",
@@ -491,16 +607,20 @@
         "Add unit test for deserialization",
         "Typecheck passes (cargo check)"
       ],
-      "priority": 30,
-      "passes": false,
+      "dependsOn": [
+        "US-003"
+      ],
+      "description": "As a PRD author, I want to configure parallelism in prd.json.",
+      "id": "US-030",
       "notes": "",
-      "targetFiles": ["src/mcp/tools/load_prd.rs"],
-      "dependsOn": ["US-003"]
+      "passes": false,
+      "priority": 30,
+      "targetFiles": [
+        "src/mcp/tools/load_prd.rs"
+      ],
+      "title": "Add parallel config section to PrdFile"
     },
     {
-      "id": "US-031",
-      "title": "Add unit tests for DependencyGraph",
-      "description": "As a developer, I need comprehensive tests for the dependency graph.",
       "acceptanceCriteria": [
         "Test from_stories with simple 3-story DAG",
         "Test cycle detection with A->B->C->A cycle",
@@ -508,16 +628,20 @@
         "Test get_ready_stories with varying completion states",
         "All tests pass (cargo test)"
       ],
-      "priority": 31,
-      "passes": false,
+      "dependsOn": [
+        "US-012"
+      ],
+      "description": "As a developer, I need comprehensive tests for the dependency graph.",
+      "id": "US-031",
       "notes": "",
-      "targetFiles": ["src/parallel/dependency.rs"],
-      "dependsOn": ["US-012"]
+      "passes": false,
+      "priority": 31,
+      "targetFiles": [
+        "src/parallel/dependency.rs"
+      ],
+      "title": "Add unit tests for DependencyGraph"
     },
     {
-      "id": "US-032",
-      "title": "Add integration test for parallel execution",
-      "description": "As a developer, I need an end-to-end test of parallel execution.",
       "acceptanceCriteria": [
         "Create test PRD with 3 independent stories",
         "Run with parallel=true, max_concurrency=3",
@@ -525,16 +649,20 @@
         "Test is in tests/integration/ directory",
         "All tests pass (cargo test)"
       ],
-      "priority": 32,
-      "passes": false,
+      "dependsOn": [
+        "US-029"
+      ],
+      "description": "As a developer, I need an end-to-end test of parallel execution.",
+      "id": "US-032",
       "notes": "",
-      "targetFiles": ["tests/integration/parallel_execution.rs"],
-      "dependsOn": ["US-029"]
+      "passes": false,
+      "priority": 32,
+      "targetFiles": [
+        "tests/integration/parallel_execution.rs"
+      ],
+      "title": "Add integration test for parallel execution"
     },
     {
-      "id": "US-033",
-      "title": "Update README with parallel execution docs",
-      "description": "As a user, I want documentation on how to use parallel execution.",
       "acceptanceCriteria": [
         "Add Parallel Execution section to README",
         "Document --parallel and --max-concurrency flags",
@@ -542,11 +670,18 @@
         "Include example PRD with dependencies",
         "All markdown links valid"
       ],
-      "priority": 33,
-      "passes": false,
+      "dependsOn": [
+        "US-032"
+      ],
+      "description": "As a user, I want documentation on how to use parallel execution.",
+      "id": "US-033",
       "notes": "",
-      "targetFiles": ["README.md"],
-      "dependsOn": ["US-032"]
+      "passes": false,
+      "priority": 33,
+      "targetFiles": [
+        "README.md"
+      ],
+      "title": "Update README with parallel execution docs"
     }
   ]
 }

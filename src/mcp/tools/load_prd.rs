@@ -66,6 +66,9 @@ pub struct PrdUserStory {
     pub priority: u32,
     /// Whether the story passes
     pub passes: bool,
+    /// IDs of stories this story depends on
+    #[serde(rename = "dependsOn", default)]
+    pub depends_on: Vec<String>,
 }
 
 /// Validation error types for PRD files.
@@ -449,5 +452,54 @@ mod tests {
 
         let error = PrdValidationError::StructureError("Missing field".to_string());
         assert_eq!(error.to_string(), "Invalid PRD structure: Missing field");
+    }
+
+    #[test]
+    fn test_deserialize_story_without_depends_on() {
+        let json = r#"{
+            "id": "US-001",
+            "title": "Test Story",
+            "description": "A story without dependencies",
+            "acceptanceCriteria": ["AC1"],
+            "priority": 1,
+            "passes": false
+        }"#;
+
+        let story: PrdUserStory = serde_json::from_str(json).unwrap();
+        assert_eq!(story.id, "US-001");
+        assert_eq!(story.title, "Test Story");
+        assert!(story.depends_on.is_empty());
+    }
+
+    #[test]
+    fn test_deserialize_story_with_depends_on() {
+        let json = r#"{
+            "id": "US-002",
+            "title": "Dependent Story",
+            "description": "A story with dependencies",
+            "acceptanceCriteria": ["AC1"],
+            "priority": 2,
+            "passes": false,
+            "dependsOn": ["US-001", "US-003"]
+        }"#;
+
+        let story: PrdUserStory = serde_json::from_str(json).unwrap();
+        assert_eq!(story.id, "US-002");
+        assert_eq!(story.title, "Dependent Story");
+        assert_eq!(story.depends_on, vec!["US-001", "US-003"]);
+    }
+
+    #[test]
+    fn test_deserialize_story_with_empty_depends_on() {
+        let json = r#"{
+            "id": "US-001",
+            "title": "Story with empty deps",
+            "priority": 1,
+            "passes": false,
+            "dependsOn": []
+        }"#;
+
+        let story: PrdUserStory = serde_json::from_str(json).unwrap();
+        assert!(story.depends_on.is_empty());
     }
 }
