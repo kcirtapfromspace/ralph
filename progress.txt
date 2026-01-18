@@ -40,3 +40,17 @@ Started: Sat Jan 17 21:41:00 MST 2026
   - MascotRenderer provides render_with_quote() and render_beside_content() methods
   - 12 dedicated mascot tests all passing
 ---
+
+## 2026-01-17 - US-003
+- What was implemented: Integrated mascot into startup display
+- Files changed:
+  - src/main.rs: Added `--no-animation` flag and custom `--version` flag handler with HelpRenderer
+  - src/ui/help.rs: Added `--no-animation` to GLOBAL_OPTIONS; updated render_version() to show mascot beside version box; updated render_help() to show mascot with random quote
+  - tests/cli_tests.rs: Updated tests to accept both "RALPH" (banner) and "ralph" (usage) in output
+- **Learnings for future iterations:**
+  - When adding custom flags that conflict with clap's auto-generated ones (like `--version`), use `disable_version_flag = true` in the `#[command()]` attribute
+  - HelpRenderer already had `animate` field and `with_animation()` builder - just needed to wire it up in main.rs
+  - MascotRenderer.render_beside_content() combines content and mascot side-by-side
+  - MascotRenderer.render_with_quote() renders mascot art with a random quote below
+  - Tests use `predicate::str::contains()` which is case-sensitive; use `.or()` for alternatives
+---
