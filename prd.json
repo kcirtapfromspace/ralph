@@ -1,12 +1,9 @@
 {
-  "project": "Ralph",
   "branchName": "ralph/codebase-audit",
   "description": "Add comprehensive codebase audit, inventory, and evaluation feature to Ralph - enabling pre-development context, architecture gap detection, interactive Q&A refinement, and automatic PRD generation with prd.json conversion for immediate execution",
+  "project": "Ralph",
   "userStories": [
     {
-      "id": "US-001",
-      "title": "Create audit module structure",
-      "description": "As a developer, I need the audit module scaffolding so other audit features can be built on top of it.",
       "acceptanceCriteria": [
         "Create src/audit/mod.rs with module organization and re-exports",
         "Define core types: AuditReport, AuditFinding, FeatureOpportunity, Severity",
@@ -14,14 +11,14 @@
         "Add mod audit; to src/main.rs",
         "Typecheck passes"
       ],
+      "description": "As a developer, I need the audit module scaffolding so other audit features can be built on top of it.",
+      "id": "US-001",
+      "notes": "Foundation module - all other audit features depend on this",
+      "passes": true,
       "priority": 1,
-      "passes": false,
-      "notes": "Foundation module - all other audit features depend on this"
+      "title": "Create audit module structure"
     },
     {
-      "id": "US-002",
-      "title": "Implement file inventory scanner",
-      "description": "As a user, I want the audit to scan the directory structure so I can see what files and folders exist in the codebase.",
       "acceptanceCriteria": [
         "Create src/audit/inventory.rs with InventoryScanner struct",
         "Scan directory tree respecting .gitignore patterns",
@@ -32,14 +29,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 2,
+      "description": "As a user, I want the audit to scan the directory structure so I can see what files and folders exist in the codebase.",
+      "id": "US-002",
+      "notes": "Use ignore crate for .gitignore support",
       "passes": false,
-      "notes": "Use ignore crate for .gitignore support"
+      "priority": 2,
+      "title": "Implement file inventory scanner"
     },
     {
-      "id": "US-003",
-      "title": "Implement language detection",
-      "description": "As a user, I want the audit to detect which programming languages are used so I understand the tech stack.",
       "acceptanceCriteria": [
         "Create src/audit/languages/mod.rs with LanguageDetector",
         "Detect Rust (Cargo.toml, .rs files)",
@@ -50,14 +47,14 @@
         "Unit tests for each language detection",
         "Typecheck passes"
       ],
-      "priority": 3,
+      "description": "As a user, I want the audit to detect which programming languages are used so I understand the tech stack.",
+      "id": "US-003",
+      "notes": "Languages detected by manifest files and file extensions",
       "passes": false,
-      "notes": "Languages detected by manifest files and file extensions"
+      "priority": 3,
+      "title": "Implement language detection"
     },
     {
-      "id": "US-004",
-      "title": "Implement dependency parser",
-      "description": "As a user, I want the audit to analyze dependencies so I can see what libraries the project uses.",
       "acceptanceCriteria": [
         "Create src/audit/dependencies.rs with DependencyParser",
         "Parse Cargo.toml for Rust dependencies",
@@ -68,14 +65,14 @@
         "Unit tests for each ecosystem parser",
         "Typecheck passes"
       ],
-      "priority": 4,
+      "description": "As a user, I want the audit to analyze dependencies so I can see what libraries the project uses.",
+      "id": "US-004",
+      "notes": "Use toml and serde_json crates for parsing",
       "passes": false,
-      "notes": "Use toml and serde_json crates for parsing"
+      "priority": 4,
+      "title": "Implement dependency parser"
     },
     {
-      "id": "US-005",
-      "title": "Implement code pattern detection",
-      "description": "As a user, I want the audit to detect code patterns and conventions so agents can follow existing practices.",
       "acceptanceCriteria": [
         "Create src/audit/patterns.rs with PatternAnalyzer",
         "Detect naming conventions (snake_case, camelCase, PascalCase)",
@@ -86,14 +83,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 5,
+      "description": "As a user, I want the audit to detect code patterns and conventions so agents can follow existing practices.",
+      "id": "US-005",
+      "notes": "Use regex for pattern matching in source files",
       "passes": false,
-      "notes": "Use regex for pattern matching in source files"
+      "priority": 5,
+      "title": "Implement code pattern detection"
     },
     {
-      "id": "US-006",
-      "title": "Implement architecture analysis",
-      "description": "As a user, I want the audit to identify the architecture pattern so I understand how the codebase is organized.",
       "acceptanceCriteria": [
         "Create src/audit/architecture.rs with ArchitectureAnalyzer",
         "Detect architecture patterns (layered, modular, hexagonal, clean, etc.)",
@@ -103,14 +100,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 6,
+      "description": "As a user, I want the audit to identify the architecture pattern so I understand how the codebase is organized.",
+      "id": "US-006",
+      "notes": "Analyze directory structure and import patterns",
       "passes": false,
-      "notes": "Analyze directory structure and import patterns"
+      "priority": 6,
+      "title": "Implement architecture analysis"
     },
     {
-      "id": "US-007",
-      "title": "Implement API inventory",
-      "description": "As a user, I want the audit to discover API endpoints and interfaces so I know what the codebase exposes.",
       "acceptanceCriteria": [
         "Create src/audit/api.rs with ApiInventory",
         "Detect HTTP endpoints (axum, actix, express patterns)",
@@ -120,14 +117,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 7,
+      "description": "As a user, I want the audit to discover API endpoints and interfaces so I know what the codebase exposes.",
+      "id": "US-007",
+      "notes": "Use regex to find route definitions and clap derives",
       "passes": false,
-      "notes": "Use regex to find route definitions and clap derives"
+      "priority": 7,
+      "title": "Implement API inventory"
     },
     {
-      "id": "US-008",
-      "title": "Implement test coverage analysis",
-      "description": "As a user, I want the audit to analyze test coverage so I know which areas lack tests.",
       "acceptanceCriteria": [
         "Create src/audit/testing.rs with TestAnalyzer",
         "Count test files and test functions",
@@ -137,14 +134,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 8,
+      "description": "As a user, I want the audit to analyze test coverage so I know which areas lack tests.",
+      "id": "US-008",
+      "notes": "Look for #[test] and #[cfg(test)] in Rust, test/spec files in JS",
       "passes": false,
-      "notes": "Look for #[test] and #[cfg(test)] in Rust, test/spec files in JS"
+      "priority": 8,
+      "title": "Implement test coverage analysis"
     },
     {
-      "id": "US-009",
-      "title": "Implement documentation gap detection",
-      "description": "As a user, I want the audit to find missing documentation so I know what needs to be documented.",
       "acceptanceCriteria": [
         "Create src/audit/documentation.rs with DocAnalyzer",
         "Check for README presence and completeness",
@@ -154,14 +151,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 9,
+      "description": "As a user, I want the audit to find missing documentation so I know what needs to be documented.",
+      "id": "US-009",
+      "notes": "Look for /// comments before pub items in Rust",
       "passes": false,
-      "notes": "Look for /// comments before pub items in Rust"
+      "priority": 9,
+      "title": "Implement documentation gap detection"
     },
     {
-      "id": "US-010",
-      "title": "Implement architecture gap detector",
-      "description": "As a user, I want the audit to identify architecture gaps so I know what improvements are needed.",
       "acceptanceCriteria": [
         "Create src/audit/detectors/mod.rs and architecture_gaps.rs",
         "Detect missing abstraction layers",
@@ -171,14 +168,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 10,
+      "description": "As a user, I want the audit to identify architecture gaps so I know what improvements are needed.",
+      "id": "US-010",
+      "notes": "Analyze import patterns to detect violations",
       "passes": false,
-      "notes": "Analyze import patterns to detect violations"
+      "priority": 10,
+      "title": "Implement architecture gap detector"
     },
     {
-      "id": "US-011",
-      "title": "Implement opportunity detector",
-      "description": "As a user, I want the audit to suggest complementary features so I know what could be added.",
       "acceptanceCriteria": [
         "Create src/audit/detectors/opportunities.rs",
         "Define opportunity patterns (e.g., has quality gates but no audit command)",
@@ -187,14 +184,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 11,
+      "description": "As a user, I want the audit to suggest complementary features so I know what could be added.",
+      "id": "US-011",
+      "notes": "Pattern matching based on what exists vs what could exist",
       "passes": false,
-      "notes": "Pattern matching based on what exists vs what could exist"
+      "priority": 11,
+      "title": "Implement opportunity detector"
     },
     {
-      "id": "US-012",
-      "title": "Implement technical debt detector",
-      "description": "As a user, I want the audit to find technical debt so I can prioritize cleanup.",
       "acceptanceCriteria": [
         "Create src/audit/detectors/tech_debt.rs",
         "Detect TODO/FIXME/HACK comments",
@@ -204,14 +201,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 12,
+      "description": "As a user, I want the audit to find technical debt so I can prioritize cleanup.",
+      "id": "US-012",
+      "notes": "Use regex to find TODO comments, compare dep versions",
       "passes": false,
-      "notes": "Use regex to find TODO comments, compare dep versions"
+      "priority": 12,
+      "title": "Implement technical debt detector"
     },
     {
-      "id": "US-013",
-      "title": "Implement JSON report output",
-      "description": "As a user, I want audit results in JSON format so tools can consume them programmatically.",
       "acceptanceCriteria": [
         "Create src/audit/output/mod.rs and structured.rs",
         "Serialize AuditReport to JSON",
@@ -220,14 +217,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 13,
+      "description": "As a user, I want audit results in JSON format so tools can consume them programmatically.",
+      "id": "US-013",
+      "notes": "Use serde_json for serialization",
       "passes": false,
-      "notes": "Use serde_json for serialization"
+      "priority": 13,
+      "title": "Implement JSON report output"
     },
     {
-      "id": "US-014",
-      "title": "Implement markdown report output",
-      "description": "As a user, I want audit results in markdown format so I can read them easily.",
       "acceptanceCriteria": [
         "Create src/audit/output/markdown.rs",
         "Generate executive summary with key metrics",
@@ -237,14 +234,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 14,
+      "description": "As a user, I want audit results in markdown format so I can read them easily.",
+      "id": "US-014",
+      "notes": "Generate GitHub-flavored markdown",
       "passes": false,
-      "notes": "Generate GitHub-flavored markdown"
+      "priority": 14,
+      "title": "Implement markdown report output"
     },
     {
-      "id": "US-015",
-      "title": "Implement agent context output",
-      "description": "As a developer, I want audit patterns written to progress.txt so agents can follow existing conventions.",
       "acceptanceCriteria": [
         "Create src/audit/output/agent_context.rs",
         "Generate Codebase Patterns section for progress.txt",
@@ -253,14 +250,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 15,
+      "description": "As a developer, I want audit patterns written to progress.txt so agents can follow existing conventions.",
+      "id": "US-015",
+      "notes": "Format matches existing progress.txt pattern",
       "passes": false,
-      "notes": "Format matches existing progress.txt pattern"
+      "priority": 15,
+      "title": "Implement agent context output"
     },
     {
-      "id": "US-016",
-      "title": "Add audit CLI subcommand",
-      "description": "As a user, I want to run ralph audit from the command line so I can audit any codebase.",
       "acceptanceCriteria": [
         "Add Audit variant to Commands enum in src/main.rs",
         "Support -d, --dir for target directory",
@@ -273,14 +270,14 @@
         "Print help text with -h, --help",
         "Typecheck passes"
       ],
-      "priority": 16,
+      "description": "As a user, I want to run ralph audit from the command line so I can audit any codebase.",
+      "id": "US-016",
+      "notes": "Follow existing Commands pattern in main.rs",
       "passes": false,
-      "notes": "Follow existing Commands pattern in main.rs"
+      "priority": 16,
+      "title": "Add audit CLI subcommand"
     },
     {
-      "id": "US-017",
-      "title": "Implement interactive Q&A flow",
-      "description": "As a user, I want the audit to ask me clarifying questions so it better understands my goals.",
       "acceptanceCriteria": [
         "Create src/audit/interactive.rs with Q&A logic",
         "Ask 3-5 questions with A/B/C/D options",
@@ -292,14 +289,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 17,
+      "description": "As a user, I want the audit to ask me clarifying questions so it better understands my goals.",
+      "id": "US-017",
+      "notes": "Use console crate for terminal input",
       "passes": false,
-      "notes": "Use console crate for terminal input"
+      "priority": 17,
+      "title": "Implement interactive Q&A flow"
     },
     {
-      "id": "US-018",
-      "title": "Implement audit-to-PRD generation",
-      "description": "As a user, I want to generate a PRD from audit findings so I can start improving the codebase.",
       "acceptanceCriteria": [
         "Create src/audit/prd_generator.rs",
         "Convert findings to user stories",
@@ -310,14 +307,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 18,
+      "description": "As a user, I want to generate a PRD from audit findings so I can start improving the codebase.",
+      "id": "US-018",
+      "notes": "Follow PRD format from skills/prd/SKILL.md",
       "passes": false,
-      "notes": "Follow PRD format from skills/prd/SKILL.md"
+      "priority": 18,
+      "title": "Implement audit-to-PRD generation"
     },
     {
-      "id": "US-019",
-      "title": "Implement PRD-to-prd.json conversion",
-      "description": "As a user, I want the audit to convert the generated PRD to prd.json so I can run ralph immediately.",
       "acceptanceCriteria": [
         "Create src/audit/prd_converter.rs",
         "Parse generated PRD markdown",
@@ -329,14 +326,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 19,
+      "description": "As a user, I want the audit to convert the generated PRD to prd.json so I can run ralph immediately.",
+      "id": "US-019",
+      "notes": "Follow prd.json format from skills/ralph/SKILL.md",
       "passes": false,
-      "notes": "Follow prd.json format from skills/ralph/SKILL.md"
+      "priority": 19,
+      "title": "Implement PRD-to-prd.json conversion"
     },
     {
-      "id": "US-020",
-      "title": "Create /audit skill for Claude Code",
-      "description": "As a user, I want to type /audit in Claude Code so I can run an interactive audit.",
       "acceptanceCriteria": [
         "Create skills/audit/SKILL.md with full skill instructions",
         "Define interactive Q&A flow matching CLI behavior",
@@ -345,14 +342,14 @@
         "Include instructions for converting to prd.json",
         "Skill follows existing /prd and /ralph skill patterns"
       ],
-      "priority": 20,
+      "description": "As a user, I want to type /audit in Claude Code so I can run an interactive audit.",
+      "id": "US-020",
+      "notes": "Reference skills/prd/SKILL.md and skills/ralph/SKILL.md as templates",
       "passes": false,
-      "notes": "Reference skills/prd/SKILL.md and skills/ralph/SKILL.md as templates"
+      "priority": 20,
+      "title": "Create /audit skill for Claude Code"
     },
     {
-      "id": "US-021",
-      "title": "Implement start_audit MCP tool",
-      "description": "As an AI agent, I want to start an audit via MCP so I can analyze codebases programmatically.",
       "acceptanceCriteria": [
         "Create src/mcp/tools/audit.rs with start_audit tool",
         "Accept path parameter (optional, defaults to PRD directory)",
@@ -363,14 +360,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 21,
+      "description": "As an AI agent, I want to start an audit via MCP so I can analyze codebases programmatically.",
+      "id": "US-021",
+      "notes": "Follow pattern from existing MCP tools in src/mcp/tools/",
       "passes": false,
-      "notes": "Follow pattern from existing MCP tools in src/mcp/tools/"
+      "priority": 21,
+      "title": "Implement start_audit MCP tool"
     },
     {
-      "id": "US-022",
-      "title": "Implement get_audit_status MCP tool",
-      "description": "As an AI agent, I want to check audit progress so I know when it's complete.",
       "acceptanceCriteria": [
         "Add get_audit_status tool to src/mcp/tools/audit.rs",
         "Accept audit ID parameter",
@@ -380,14 +377,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 22,
+      "description": "As an AI agent, I want to check audit progress so I know when it's complete.",
+      "id": "US-022",
+      "notes": "Status tracking similar to story execution state",
       "passes": false,
-      "notes": "Status tracking similar to story execution state"
+      "priority": 22,
+      "title": "Implement get_audit_status MCP tool"
     },
     {
-      "id": "US-023",
-      "title": "Implement get_audit_results MCP tool",
-      "description": "As an AI agent, I want to retrieve audit results so I can present findings to the user.",
       "acceptanceCriteria": [
         "Add get_audit_results tool to src/mcp/tools/audit.rs",
         "Accept audit ID parameter",
@@ -397,14 +394,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 23,
+      "description": "As an AI agent, I want to retrieve audit results so I can present findings to the user.",
+      "id": "US-023",
+      "notes": "Serialize AuditReport to JSON for MCP response",
       "passes": false,
-      "notes": "Serialize AuditReport to JSON for MCP response"
+      "priority": 23,
+      "title": "Implement get_audit_results MCP tool"
     },
     {
-      "id": "US-024",
-      "title": "Implement generate_prd_from_audit MCP tool",
-      "description": "As an AI agent, I want to generate a PRD from audit results so users can start improving their codebase.",
       "acceptanceCriteria": [
         "Add generate_prd_from_audit tool to src/mcp/tools/audit.rs",
         "Accept audit ID parameter",
@@ -415,14 +412,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 24,
+      "description": "As an AI agent, I want to generate a PRD from audit results so users can start improving their codebase.",
+      "id": "US-024",
+      "notes": "Reuse prd_generator and prd_converter modules",
       "passes": false,
-      "notes": "Reuse prd_generator and prd_converter modules"
+      "priority": 24,
+      "title": "Implement generate_prd_from_audit MCP tool"
     },
     {
-      "id": "US-025",
-      "title": "Add audit settings to quality profiles",
-      "description": "As a user, I want to configure audit behavior via quality profiles so I can customize thresholds.",
       "acceptanceCriteria": [
         "Add [profiles.*.audit] section to quality/ralph-quality.toml",
         "Add enabled boolean",
@@ -432,14 +429,14 @@
         "Unit tests pass",
         "Typecheck passes"
       ],
-      "priority": 25,
+      "description": "As a user, I want to configure audit behavior via quality profiles so I can customize thresholds.",
+      "id": "US-025",
+      "notes": "Follow existing profile pattern in src/quality/profiles.rs",
       "passes": false,
-      "notes": "Follow existing profile pattern in src/quality/profiles.rs"
+      "priority": 25,
+      "title": "Add audit settings to quality profiles"
     },
     {
-      "id": "US-026",
-      "title": "Integration test on Ralph's own codebase",
-      "description": "As a developer, I want to run the audit on Ralph itself so I can verify it works end-to-end.",
       "acceptanceCriteria": [
         "Create integration test that runs full audit on ralph codebase",
         "Verify all analysis sections produce results",
@@ -448,9 +445,12 @@
         "Verify findings are reasonable for Ralph codebase",
         "Test passes"
       ],
-      "priority": 26,
+      "description": "As a developer, I want to run the audit on Ralph itself so I can verify it works end-to-end.",
+      "id": "US-026",
+      "notes": "Use tests/ directory for integration tests",
       "passes": false,
-      "notes": "Use tests/ directory for integration tests"
+      "priority": 26,
+      "title": "Integration test on Ralph's own codebase"
     }
   ]
 }
