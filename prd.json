@@ -86,7 +86,7 @@
       "description": "As a user, I want the audit to detect code patterns and conventions so agents can follow existing practices.",
       "id": "US-005",
       "notes": "Use regex for pattern matching in source files",
-      "passes": false,
+      "passes": true,
       "priority": 5,
       "title": "Implement code pattern detection"
     },

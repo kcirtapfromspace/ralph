@@ -10,12 +10,18 @@
 // Allow dead code for scaffolding - will be used in future stories
 #![allow(dead_code)]
 
+pub mod architecture;
 pub mod dependencies;
 pub mod inventory;
 pub mod languages;
 pub mod patterns;
 
 // Re-exports for convenience
+#[allow(unused_imports)]
+pub use architecture::{
+    ArchitectureAnalysis, ArchitectureAnalyzer, ArchitectureLayer, ArchitecturePattern,
+    BoundaryViolation, CouplingStrength, LayerType, ModuleCoupling,
+};
 #[allow(unused_imports)]
 pub use dependencies::{
     Dependency, DependencyAnalysis, DependencyEcosystem, DependencyParser, OutdatedInfo,
