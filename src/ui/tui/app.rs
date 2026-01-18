@@ -22,8 +22,8 @@ use ratatui::{
 use super::animation::AnimationState;
 use super::progress::{StoryProgressWidget, StoryState};
 use super::widgets::{
-    CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary,
-    IterationWidget, StoryHeaderWidget,
+    CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary, IterationWidget,
+    StoryHeaderWidget,
 };
 
 /// Application state for the TUI.
@@ -228,10 +228,10 @@ impl App {
             .direction(Direction::Vertical)
             .margin(1)
             .constraints([
-                Constraint::Length(3),  // Story header
-                Constraint::Length(2),  // Progress
-                Constraint::Length(2),  // Iteration
-                Constraint::Min(0),     // Content/Completion
+                Constraint::Length(3), // Story header
+                Constraint::Length(2), // Progress
+                Constraint::Length(2), // Iteration
+                Constraint::Min(0),    // Content/Completion
             ])
             .split(area);
 
@@ -347,9 +347,7 @@ mod tests {
             title: "Test Story".to_string(),
             priority: 1,
         };
-        let app = App::new()
-            .with_current_story(story)
-            .with_iteration(3, 10);
+        let app = App::new().with_current_story(story).with_iteration(3, 10);
 
         let output = app.render_to_string(60);
         assert!(output.contains("US-001"));

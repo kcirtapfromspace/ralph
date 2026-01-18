@@ -69,8 +69,7 @@ impl Easing {
                 } else {
                     let p = 0.3;
                     let s = p / 4.0;
-                    2.0_f64.powf(-10.0 * t)
-                        * ((t - s) * (2.0 * std::f64::consts::PI) / p).sin()
+                    2.0_f64.powf(-10.0 * t) * ((t - s) * (2.0 * std::f64::consts::PI) / p).sin()
                         + 1.0
                 }
             }
@@ -303,7 +302,12 @@ impl AnimationState {
     }
 
     /// Get a color that pulses between two RGB values.
-    pub fn pulse_color(&self, from: (u8, u8, u8), to: (u8, u8, u8), period_frames: u64) -> (u8, u8, u8) {
+    pub fn pulse_color(
+        &self,
+        from: (u8, u8, u8),
+        to: (u8, u8, u8),
+        period_frames: u64,
+    ) -> (u8, u8, u8) {
         let t = self.pulse(period_frames);
         from.lerp(&to, t)
     }
@@ -362,7 +366,12 @@ mod tests {
 
     #[test]
     fn test_tween_f64() {
-        let mut tween = Tween::new(0.0_f64, 100.0_f64, Duration::from_millis(100), Easing::Linear);
+        let mut tween = Tween::new(
+            0.0_f64,
+            100.0_f64,
+            Duration::from_millis(100),
+            Easing::Linear,
+        );
         assert!((tween.value() - 0.0).abs() < 0.001);
 
         tween.start();

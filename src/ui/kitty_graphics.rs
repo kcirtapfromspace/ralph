@@ -242,7 +242,10 @@ impl KittyGraphics {
             let mut params = Vec::new();
 
             if is_first {
-                params.push(format!("a={}", GraphicsAction::TransmitAndDisplay.as_char()));
+                params.push(format!(
+                    "a={}",
+                    GraphicsAction::TransmitAndDisplay.as_char()
+                ));
                 params.push(format!("f={}", ImageFormat_::Png.format_code()));
                 params.push(format!("i={}", id));
 
@@ -364,7 +367,10 @@ impl KittyGraphics {
             let mut params = Vec::new();
 
             if is_first {
-                params.push(format!("a={}", GraphicsAction::TransmitAndDisplay.as_char()));
+                params.push(format!(
+                    "a={}",
+                    GraphicsAction::TransmitAndDisplay.as_char()
+                ));
                 params.push(format!("f={}", ImageFormat_::Png.format_code()));
                 params.push(format!("i={}", id));
 

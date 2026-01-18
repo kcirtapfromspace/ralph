@@ -111,7 +111,12 @@ impl Widget for StoryHeaderWidget {
         let content = self.render_string(area.width as usize);
         let lines: Vec<Line> = content
             .lines()
-            .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(colors::CYAN))))
+            .map(|s| {
+                Line::from(Span::styled(
+                    s.to_string(),
+                    Style::default().fg(colors::CYAN),
+                ))
+            })
             .collect();
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
@@ -219,7 +224,10 @@ impl GateChainWidget {
             .iter()
             .map(|g| {
                 let icon = g.status.icon();
-                let duration = g.duration.map(|d| format!(" ({:.1}s)", d)).unwrap_or_default();
+                let duration = g
+                    .duration
+                    .map(|d| format!(" ({:.1}s)", d))
+                    .unwrap_or_default();
                 format!("{} {}{}", g.name, icon, duration)
             })
             .collect::<Vec<_>>()
@@ -281,10 +289,14 @@ impl IterationWidget {
 
     /// Render as a formatted string.
     pub fn render_string(&self) -> String {
-        let spinner = self.animation.as_ref().map(|a| {
-            let chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
-            chars[(a.frame as usize) % chars.len()]
-        }).unwrap_or("⟳");
+        let spinner = self
+            .animation
+            .as_ref()
+            .map(|a| {
+                let chars = ["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+                chars[(a.frame as usize) % chars.len()]
+            })
+            .unwrap_or("⟳");
 
         let bar_width = 15;
         let filled = if self.max > 0 {
@@ -305,7 +317,10 @@ impl IterationWidget {
 
         if !self.gates.is_empty() {
             let gate_chain = GateChainWidget::new(self.gates.clone());
-            output.push_str(&format!("\n         └── Running: {}", gate_chain.render_string()));
+            output.push_str(&format!(
+                "\n         └── Running: {}",
+                gate_chain.render_string()
+            ));
         }
 
         output
@@ -319,10 +334,7 @@ impl Widget for IterationWidget {
         }
 
         let content = self.render_string();
-        let lines: Vec<Line> = content
-            .lines()
-            .map(|s| Line::from(s.to_string()))
-            .collect();
+        let lines: Vec<Line> = content.lines().map(|s| Line::from(s.to_string())).collect();
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
     }
@@ -465,20 +477,26 @@ impl CompletionSummaryWidget {
         output.push_str(&format!("│ {}{} │\n", dur_line, " ".repeat(padding)));
 
         // Iterations
-        let iter_line = format!("Iterations: {}/{}", self.iterations_used, self.max_iterations);
+        let iter_line = format!(
+            "Iterations: {}/{}",
+            self.iterations_used, self.max_iterations
+        );
         let padding = inner.saturating_sub(iter_line.len() + 1);
         output.push_str(&format!("│ {}{} │\n", iter_line, " ".repeat(padding)));
 
         // Gates
         if !self.gates.is_empty() {
-            let gates_str = self.gates.iter()
+            let gates_str = self
+                .gates
+                .iter()
                 .map(|g| format!("{} {}", g.name, g.status.icon()))
                 .collect::<Vec<_>>()
                 .join(" | ");
             let gates_line = format!("Gates: {}", gates_str);
             let display_len = gates_line.len().min(inner);
             let padding = inner.saturating_sub(display_len + 1);
-            output.push_str(&format!("│ {}{} │\n",
+            output.push_str(&format!(
+                "│ {}{} │\n",
                 &gates_line[..display_len],
                 " ".repeat(padding.min(inner))
             ));
@@ -514,7 +532,11 @@ impl Widget for CompletionSummaryWidget {
         }
 
         let content = self.render_string(area.width as usize);
-        let color = if self.passed { colors::GREEN } else { colors::RED };
+        let color = if self.passed {
+            colors::GREEN
+        } else {
+            colors::RED
+        };
         let lines: Vec<Line> = content
             .lines()
             .map(|s| Line::from(Span::styled(s.to_string(), Style::default().fg(color))))
@@ -584,9 +606,11 @@ mod tests {
                 GateInfo::new("build", GateStatus::Passed),
                 GateInfo::new("test", GateStatus::Passed),
             ])
-            .with_git(GitSummary::new()
-                .with_commit("abc123f")
-                .with_changes(3, 212, 208));
+            .with_git(
+                GitSummary::new()
+                    .with_commit("abc123f")
+                    .with_changes(3, 212, 208),
+            );
 
         let output = widget.render_string(50);
         assert!(output.contains("US-001"));

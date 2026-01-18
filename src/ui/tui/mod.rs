@@ -15,6 +15,6 @@ pub use animation::{AnimationState, Easing, Tween};
 pub use app::{App, AppState, CompletionData, StoryInfo};
 pub use progress::{RichProgress, StoryProgressWidget, StoryState};
 pub use widgets::{
-    CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary,
-    IterationWidget, StoryHeaderWidget,
+    CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary, IterationWidget,
+    StoryHeaderWidget,
 };

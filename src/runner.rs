@@ -70,8 +70,7 @@ impl Runner {
         let mut total_iterations: u32 = 0;
 
         // Create TUI display
-        let mut display = TuiRunnerDisplay::new()
-            .with_quiet(self.config.quiet);
+        let mut display = TuiRunnerDisplay::new().with_quiet(self.config.quiet);
 
         // Load and validate PRD
         let prd = match self.load_prd() {
@@ -90,7 +89,8 @@ impl Runner {
         let total_stories = prd.user_stories.len();
 
         // Initialize display with story list
-        let story_status: Vec<(String, bool)> = prd.user_stories
+        let story_status: Vec<(String, bool)> = prd
+            .user_stories
             .iter()
             .map(|s| (s.id.clone(), s.passes))
             .collect();
@@ -148,7 +148,8 @@ impl Runner {
             };
 
             // Update display with current story states
-            let story_status: Vec<(String, bool)> = prd.user_stories
+            let story_status: Vec<(String, bool)> = prd
+                .user_stories
                 .iter()
                 .map(|s| (s.id.clone(), s.passes))
                 .collect();
@@ -215,11 +216,12 @@ impl Runner {
                     match result {
                         Ok(exec_result) => {
                             if exec_result.success {
-                                display.complete_story(&story_id, exec_result.commit_hash.as_deref());
+                                display
+                                    .complete_story(&story_id, exec_result.commit_hash.as_deref());
                             } else {
                                 display.fail_story(
                                     &story_id,
-                                    exec_result.error.as_deref().unwrap_or("unknown")
+                                    exec_result.error.as_deref().unwrap_or("unknown"),
                                 );
                             }
                         }

@@ -6,8 +6,8 @@ use std::io::{self, Write};
 use std::time::{Duration, Instant};
 
 use crate::ui::tui::{
-    CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary,
-    IterationWidget, StoryHeaderWidget, StoryProgressWidget, StoryState, AnimationState,
+    AnimationState, CompletionSummaryWidget, GateChainWidget, GateInfo, GateStatus, GitSummary,
+    IterationWidget, StoryHeaderWidget, StoryProgressWidget, StoryState,
 };
 
 /// A TUI-based display for the runner loop.
@@ -99,13 +99,27 @@ impl TuiRunnerDisplay {
         }
 
         println!();
-        println!("{}",  self.style_header("╔════════════════════════════════════════════════════════════╗"));
-        println!("{}",  self.style_header("║               🥋 RALPH ITERATION LOOP                      ║"));
-        println!("{}",  self.style_header("╚════════════════════════════════════════════════════════════╝"));
+        println!(
+            "{}",
+            self.style_header("╔════════════════════════════════════════════════════════════╗")
+        );
+        println!(
+            "{}",
+            self.style_header("║               🥋 RALPH ITERATION LOOP                      ║")
+        );
+        println!(
+            "{}",
+            self.style_header("╚════════════════════════════════════════════════════════════╝")
+        );
         println!();
         println!("  {} {}", self.style_dim("PRD:"), prd_path);
         println!("  {} {}", self.style_dim("Agent:"), agent);
-        println!("  {} {}/{} passing", self.style_dim("Stories:"), passing, total);
+        println!(
+            "  {} {}/{} passing",
+            self.style_dim("Stories:"),
+            passing,
+            total
+        );
         println!();
     }
 
@@ -222,7 +236,8 @@ impl TuiRunnerDisplay {
 
         println!(); // New line after iteration display
 
-        let duration = self.start_time
+        let duration = self
+            .start_time
             .map(|t| t.elapsed().as_secs_f64())
             .unwrap_or(0.0);
 
@@ -263,7 +278,8 @@ impl TuiRunnerDisplay {
 
         println!(); // New line after iteration display
 
-        let duration = self.start_time
+        let duration = self
+            .start_time
             .map(|t| t.elapsed().as_secs_f64())
             .unwrap_or(0.0);
 
@@ -290,23 +306,33 @@ impl TuiRunnerDisplay {
         }
 
         println!();
-        println!("{}", self.style_success(&format!(
-            "╔════════════════════════════════════════════════════════════╗"
-        )));
-        println!("{}", self.style_success(&format!(
-            "║           🎉 ALL {} STORIES COMPLETE! 🎉                   ║", total
-        )));
-        println!("{}", self.style_success(&format!(
-            "╚════════════════════════════════════════════════════════════╝"
-        )));
+        println!(
+            "{}",
+            self.style_success(&format!(
+                "╔════════════════════════════════════════════════════════════╗"
+            ))
+        );
+        println!(
+            "{}",
+            self.style_success(&format!(
+                "║           🎉 ALL {} STORIES COMPLETE! 🎉                   ║",
+                total
+            ))
+        );
+        println!(
+            "{}",
+            self.style_success(&format!(
+                "╚════════════════════════════════════════════════════════════╝"
+            ))
+        );
         println!();
         println!("<promise>COMPLETE</promise>");
     }
 
     /// Render progress bar.
     fn render_progress(&self) {
-        let widget = StoryProgressWidget::new(self.stories.clone())
-            .with_animation(self.animation.clone());
+        let widget =
+            StoryProgressWidget::new(self.stories.clone()).with_animation(self.animation.clone());
         println!("{}", widget.render_string());
     }
 

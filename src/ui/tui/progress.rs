@@ -37,9 +37,9 @@ impl Default for RichProgress {
         Self {
             progress: 0.0,
             label: String::new(),
-            color_start: Color::Rgb(34, 197, 94),  // Green
-            color_end: Color::Rgb(59, 130, 246),   // Blue
-            bg_color: Color::Rgb(55, 65, 81),      // Gray
+            color_start: Color::Rgb(34, 197, 94), // Green
+            color_end: Color::Rgb(59, 130, 246),  // Blue
+            bg_color: Color::Rgb(55, 65, 81),     // Gray
             show_percentage: true,
             show_label: true,
         }
@@ -158,10 +158,10 @@ impl StoryState {
     /// Get the color for this state.
     pub fn color(&self) -> Color {
         match self {
-            Self::Pending => Color::Rgb(107, 114, 128),  // Gray
-            Self::Running => Color::Rgb(59, 130, 246),   // Blue
-            Self::Passed => Color::Rgb(34, 197, 94),     // Green
-            Self::Failed => Color::Rgb(239, 68, 68),     // Red
+            Self::Pending => Color::Rgb(107, 114, 128), // Gray
+            Self::Running => Color::Rgb(59, 130, 246),  // Blue
+            Self::Passed => Color::Rgb(34, 197, 94),    // Green
+            Self::Failed => Color::Rgb(239, 68, 68),    // Red
         }
     }
 }
@@ -182,7 +182,10 @@ pub struct StoryProgressWidget {
 impl StoryProgressWidget {
     /// Create a new story progress widget.
     pub fn new(stories: Vec<(String, StoryState)>) -> Self {
-        let current = stories.iter().filter(|(_, s)| *s == StoryState::Passed).count();
+        let current = stories
+            .iter()
+            .filter(|(_, s)| *s == StoryState::Passed)
+            .count();
         let total = stories.len();
         Self {
             stories,
@@ -248,10 +251,7 @@ impl Widget for StoryProgressWidget {
 
         // Use Paragraph for simpler rendering
         let content = self.render_string();
-        let lines: Vec<Line> = content
-            .lines()
-            .map(|s| Line::from(s.to_string()))
-            .collect();
+        let lines: Vec<Line> = content.lines().map(|s| Line::from(s.to_string())).collect();
         let paragraph = Paragraph::new(lines);
         paragraph.render(area, buf);
     }
