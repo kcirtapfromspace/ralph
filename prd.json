@@ -1,12 +1,9 @@
 {
-  "project": "Ralph",
   "branchName": "ralph/docker-build-optimization",
   "description": "Optimize Docker build from 1+ hour to under 10 minutes using cargo-chef, sccache, BuildKit caching, and cross-compilation",
+  "project": "Ralph",
   "userStories": [
     {
-      "id": "US-001",
-      "title": "Add cargo-chef for dependency caching",
-      "description": "As a CI system, I want to cache compiled Rust dependencies separately from source code so that dependency changes don't require full rebuilds.",
       "acceptanceCriteria": [
         "Add cargo-chef planner stage that generates recipe.json from Cargo.toml/Cargo.lock",
         "Add cargo-chef cook stage that builds dependencies from recipe",
@@ -16,14 +13,14 @@
         "Docker build succeeds locally with `docker build -t ralph .`",
         "Typecheck passes"
       ],
+      "description": "As a CI system, I want to cache compiled Rust dependencies separately from source code so that dependency changes don't require full rebuilds.",
+      "id": "US-001",
+      "notes": "Foundation for all other optimizations. See https://github.com/LukeMathWalker/cargo-chef",
+      "passes": true,
       "priority": 1,
-      "passes": false,
-      "notes": "Foundation for all other optimizations. See https://github.com/LukeMathWalker/cargo-chef"
+      "title": "Add cargo-chef for dependency caching"
     },
     {
-      "id": "US-002",
-      "title": "Add sccache for compiler-level caching",
-      "description": "As a CI system, I want fine-grained compiler caching so that unchanged compilation units are reused across builds.",
       "acceptanceCriteria": [
         "Install sccache in builder stage",
         "Set RUSTC_WRAPPER=sccache environment variable",
@@ -33,14 +30,14 @@
         "Docker build succeeds locally",
         "Typecheck passes"
       ],
-      "priority": 2,
+      "description": "As a CI system, I want fine-grained compiler caching so that unchanged compilation units are reused across builds.",
+      "id": "US-002",
+      "notes": "Provides fine-grained caching even when dependencies change",
       "passes": false,
-      "notes": "Provides fine-grained caching even when dependencies change"
+      "priority": 2,
+      "title": "Add sccache for compiler-level caching"
     },
     {
-      "id": "US-003",
-      "title": "Add BuildKit cache mounts for cargo registry",
-      "description": "As a CI system, I want to cache the cargo registry and git dependencies so that crate downloads are not repeated.",
       "acceptanceCriteria": [
         "Add --mount=type=cache,target=/usr/local/cargo/registry for registry cache",
         "Add --mount=type=cache,target=/usr/local/cargo/git for git deps cache",
@@ -50,14 +47,14 @@
         "Docker build succeeds locally",
         "Typecheck passes"
       ],
-      "priority": 3,
+      "description": "As a CI system, I want to cache the cargo registry and git dependencies so that crate downloads are not repeated.",
+      "id": "US-003",
+      "notes": "Works with BuildKit which is default in modern Docker",
       "passes": false,
-      "notes": "Works with BuildKit which is default in modern Docker"
+      "priority": 3,
+      "title": "Add BuildKit cache mounts for cargo registry"
     },
     {
-      "id": "US-004",
-      "title": "Implement cross-compilation with cargo-zigbuild",
-      "description": "As a CI system, I want to cross-compile for both architectures natively instead of using slow QEMU emulation.",
       "acceptanceCriteria": [
         "Install zig toolchain in builder stage",
         "Install cargo-zigbuild via cargo install",
@@ -68,14 +65,14 @@
         "Multi-arch build succeeds: docker buildx build --platform linux/amd64,linux/arm64",
         "Typecheck passes"
       ],
-      "priority": 4,
+      "description": "As a CI system, I want to cross-compile for both architectures natively instead of using slow QEMU emulation.",
+      "id": "US-004",
+      "notes": "Eliminates QEMU emulation which causes 40x slowdown",
       "passes": false,
-      "notes": "Eliminates QEMU emulation which causes 40x slowdown"
+      "priority": 4,
+      "title": "Implement cross-compilation with cargo-zigbuild"
     },
     {
-      "id": "US-005",
-      "title": "Update GitHub Actions workflow for optimized builds",
-      "description": "As a maintainer, I want the CI workflow to leverage all caching optimizations for fastest possible builds.",
       "acceptanceCriteria": [
         "Remove docker/setup-qemu-action (no longer needed)",
         "Keep docker/setup-buildx-action for BuildKit",
@@ -85,14 +82,14 @@
         "Workflow file passes YAML lint",
         "Push to branch triggers successful build"
       ],
-      "priority": 5,
+      "description": "As a maintainer, I want the CI workflow to leverage all caching optimizations for fastest possible builds.",
+      "id": "US-005",
+      "notes": "Workflow is at .github/workflows/docker.yml",
       "passes": false,
-      "notes": "Workflow is at .github/workflows/docker.yml"
+      "priority": 5,
+      "title": "Update GitHub Actions workflow for optimized builds"
     },
     {
-      "id": "US-006",
-      "title": "Test and benchmark optimized builds",
-      "description": "As a maintainer, I want to verify the optimizations work and measure the improvement.",
       "acceptanceCriteria": [
         "Local build completes successfully for both platforms",
         "CI build completes in under 15 minutes",
@@ -102,14 +99,14 @@
         "Image size is under 100MB",
         "Document benchmark results in PR description"
       ],
-      "priority": 6,
+      "description": "As a maintainer, I want to verify the optimizations work and measure the improvement.",
+      "id": "US-006",
+      "notes": "Verify all optimizations work together",
       "passes": false,
-      "notes": "Verify all optimizations work together"
+      "priority": 6,
+      "title": "Test and benchmark optimized builds"
     },
     {
-      "id": "US-007",
-      "title": "Document build optimization",
-      "description": "As a developer, I want documentation explaining the build optimizations and how to build locally.",
       "acceptanceCriteria": [
         "Update docs/guides/docker-mcp-setup.md with optimized build section",
         "Document local build commands with BuildKit caching",
@@ -118,9 +115,12 @@
         "Include benchmark comparison (before/after)",
         "All markdown links valid"
       ],
-      "priority": 7,
+      "description": "As a developer, I want documentation explaining the build optimizations and how to build locally.",
+      "id": "US-007",
+      "notes": "",
       "passes": false,
-      "notes": ""
+      "priority": 7,
+      "title": "Document build optimization"
     }
   ]
 }
