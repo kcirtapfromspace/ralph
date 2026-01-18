@@ -32,7 +32,7 @@
       "description": "As a user, I want the audit to scan the directory structure so I can see what files and folders exist in the codebase.",
       "id": "US-002",
       "notes": "Use ignore crate for .gitignore support",
-      "passes": false,
+      "passes": true,
       "priority": 2,
       "title": "Implement file inventory scanner"
     },
