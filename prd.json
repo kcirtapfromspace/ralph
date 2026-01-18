@@ -50,7 +50,7 @@
       "description": "As a user, I want the audit to detect which programming languages are used so I understand the tech stack.",
       "id": "US-003",
       "notes": "Languages detected by manifest files and file extensions",
-      "passes": false,
+      "passes": true,
       "priority": 3,
       "title": "Implement language detection"
     },
