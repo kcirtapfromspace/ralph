@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use super::AuditResult;
 
 /// Type of test pattern detected
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TestPattern {
     /// Unit tests (testing individual functions/modules)
@@ -26,13 +26,8 @@ pub enum TestPattern {
     /// Snapshot tests
     Snapshot,
     /// Unknown test pattern
+    #[default]
     Unknown,
-}
-
-impl Default for TestPattern {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for TestPattern {

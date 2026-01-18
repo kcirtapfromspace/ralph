@@ -10,18 +10,13 @@ use std::path::{Path, PathBuf};
 use super::AuditResult;
 
 /// Level of language support in the codebase
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LanguageSupport {
     Primary,
     Secondary,
+    #[default]
     Minimal,
-}
-
-impl Default for LanguageSupport {
-    fn default() -> Self {
-        Self::Minimal
-    }
 }
 
 /// Information about a detected language

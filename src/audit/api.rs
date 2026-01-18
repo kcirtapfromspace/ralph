@@ -9,9 +9,10 @@ use std::path::{Path, PathBuf};
 use super::AuditResult;
 
 /// HTTP method
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum HttpMethod {
+    #[default]
     Get,
     Post,
     Put,
@@ -21,12 +22,6 @@ pub enum HttpMethod {
     Options,
     Trace,
     Connect,
-}
-
-impl Default for HttpMethod {
-    fn default() -> Self {
-        Self::Get
-    }
 }
 
 impl std::fmt::Display for HttpMethod {
@@ -46,7 +41,7 @@ impl std::fmt::Display for HttpMethod {
 }
 
 /// Framework that provides the API
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ApiFramework {
     /// Axum web framework (Rust)
@@ -72,13 +67,8 @@ pub enum ApiFramework {
     /// Echo (Go)
     Echo,
     /// Unknown framework
+    #[default]
     Unknown,
-}
-
-impl Default for ApiFramework {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for ApiFramework {

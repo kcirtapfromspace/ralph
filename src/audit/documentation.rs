@@ -58,21 +58,16 @@ pub struct DocGap {
 }
 
 /// Severity of documentation gap
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum DocSeverity {
     /// Low severity (nice to have)
     Low,
     /// Medium severity (should be documented)
+    #[default]
     Medium,
     /// High severity (must be documented)
     High,
-}
-
-impl Default for DocSeverity {
-    fn default() -> Self {
-        Self::Medium
-    }
 }
 
 impl std::fmt::Display for DocSeverity {

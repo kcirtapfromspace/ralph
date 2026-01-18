@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use super::AuditResult;
 
 /// Detected architecture pattern
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ArchitecturePattern {
     /// Traditional layered architecture (presentation, business, data)
@@ -34,13 +34,8 @@ pub enum ArchitecturePattern {
     /// Mixed or unclear architecture
     Mixed,
     /// Unknown architecture pattern
+    #[default]
     Unknown,
-}
-
-impl Default for ArchitecturePattern {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for ArchitecturePattern {
@@ -77,7 +72,7 @@ pub struct ArchitectureLayer {
 }
 
 /// Type of architectural layer
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum LayerType {
     /// Presentation/UI layer
@@ -95,13 +90,8 @@ pub enum LayerType {
     /// Test layer
     Test,
     /// Unknown layer type
+    #[default]
     Unknown,
-}
-
-impl Default for LayerType {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for LayerType {
@@ -133,18 +123,13 @@ pub struct ModuleCoupling {
 }
 
 /// Coupling strength level
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CouplingStrength {
+    #[default]
     Low,
     Medium,
     High,
-}
-
-impl Default for CouplingStrength {
-    fn default() -> Self {
-        Self::Low
-    }
 }
 
 impl std::fmt::Display for CouplingStrength {

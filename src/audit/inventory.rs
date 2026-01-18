@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use super::AuditResult;
 
 /// Detected project type
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectType {
     Rust,
@@ -20,17 +20,12 @@ pub enum ProjectType {
     Go,
     Java,
     Mixed,
+    #[default]
     Unknown,
 }
 
-impl Default for ProjectType {
-    fn default() -> Self {
-        Self::Unknown
-    }
-}
-
 /// Purpose classification for directories
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DirectoryPurpose {
     Source,
@@ -40,13 +35,8 @@ pub enum DirectoryPurpose {
     Build,
     Dependencies,
     Assets,
+    #[default]
     Unknown,
-}
-
-impl Default for DirectoryPurpose {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 /// A node in the directory tree

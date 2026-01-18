@@ -10,7 +10,7 @@ use std::path::{Path, PathBuf};
 use super::AuditResult;
 
 /// Supported dependency ecosystems
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DependencyEcosystem {
     Cargo,
@@ -19,13 +19,8 @@ pub enum DependencyEcosystem {
     Go,
     Maven,
     Gradle,
+    #[default]
     Unknown,
-}
-
-impl Default for DependencyEcosystem {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for DependencyEcosystem {

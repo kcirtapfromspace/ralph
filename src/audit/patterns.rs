@@ -10,7 +10,7 @@ use std::path::PathBuf;
 use super::AuditResult;
 
 /// Naming convention style
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum NamingConvention {
     SnakeCase,
@@ -19,13 +19,8 @@ pub enum NamingConvention {
     ScreamingSnakeCase,
     KebabCase,
     Mixed,
+    #[default]
     Unknown,
-}
-
-impl Default for NamingConvention {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for NamingConvention {
@@ -43,7 +38,7 @@ impl std::fmt::Display for NamingConvention {
 }
 
 /// Module organization pattern
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ModulePattern {
     /// Flat structure with all modules in one directory
@@ -57,13 +52,8 @@ pub enum ModulePattern {
     /// Mixed or unclear organization
     Mixed,
     /// Unknown pattern
+    #[default]
     Unknown,
-}
-
-impl Default for ModulePattern {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for ModulePattern {
@@ -80,7 +70,7 @@ impl std::fmt::Display for ModulePattern {
 }
 
 /// Error handling pattern
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ErrorHandlingPattern {
     /// Result/Option-based (Rust idiomatic)
@@ -94,13 +84,8 @@ pub enum ErrorHandlingPattern {
     /// Mixed patterns
     Mixed,
     /// Unknown pattern
+    #[default]
     Unknown,
-}
-
-impl Default for ErrorHandlingPattern {
-    fn default() -> Self {
-        Self::Unknown
-    }
 }
 
 impl std::fmt::Display for ErrorHandlingPattern {
@@ -117,7 +102,7 @@ impl std::fmt::Display for ErrorHandlingPattern {
 }
 
 /// Async pattern detected in the codebase
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AsyncPattern {
     /// Tokio runtime
@@ -131,15 +116,10 @@ pub enum AsyncPattern {
     /// Go goroutines
     GoRoutines,
     /// No async patterns detected
+    #[default]
     None,
     /// Unknown async pattern
     Unknown,
-}
-
-impl Default for AsyncPattern {
-    fn default() -> Self {
-        Self::None
-    }
 }
 
 impl std::fmt::Display for AsyncPattern {
