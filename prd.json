@@ -260,7 +260,7 @@
       "description": "As a developer, I need configuration options for parallel execution.",
       "id": "US-013",
       "notes": "",
-      "passes": false,
+      "passes": true,
       "priority": 13,
       "targetFiles": [
         "src/parallel/scheduler.rs"
