@@ -3,14 +3,17 @@
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::time::Instant;
 
-use tokio::sync::{watch, Mutex, RwLock, Semaphore};
+use tokio::sync::{mpsc, watch, Mutex, RwLock, Semaphore};
 
 use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::load_prd::{validate_prd, PrdFile};
 use crate::parallel::dependency::{DependencyGraph, StoryNode};
 use crate::parallel::reconcile::{ReconciliationEngine, ReconciliationIssue, ReconciliationResult};
 use crate::runner::{RunResult, RunnerConfig};
+use crate::ui::parallel_display::ParallelRunnerDisplay;
+use crate::ui::parallel_events::{ParallelUIEvent, StoryDisplayInfo};
 
 /// Strategy for detecting conflicts between parallel story executions.
 #[allow(dead_code)]
@@ -205,6 +208,8 @@ pub struct ParallelRunner {
     execution_state: Arc<RwLock<ParallelExecutionState>>,
     /// Mutex to serialize git operations across parallel stories.
     git_mutex: Arc<Mutex<()>>,
+    /// Optional channel sender for UI events during parallel execution.
+    ui_tx: Option<mpsc::Sender<ParallelUIEvent>>,
 }
 
 #[allow(dead_code)]
@@ -225,6 +230,7 @@ impl ParallelRunner {
             semaphore,
             execution_state,
             git_mutex,
+            ui_tx: None,
         }
     }
 
@@ -313,6 +319,123 @@ impl ParallelRunner {
 
         let mut total_iterations: u32 = 0;
 
+        // Check if UI should be enabled based on display options
+        // Skip UI rendering when quiet mode is set or UI mode is disabled
+        let should_enable_ui = !self.base_config.display_options.quiet
+            && self.base_config.display_options.should_enable_rich_ui();
+
+        // Create UI channel and spawn event handler if UI is enabled
+        let (ui_tx, ui_rx) = mpsc::channel::<ParallelUIEvent>(100);
+        let _ui_handle = if should_enable_ui {
+            let mut display = ParallelRunnerDisplay::with_display_options(
+                self.base_config.display_options.clone(),
+            );
+            // Set the max workers for display
+            display.set_max_workers(self.config.max_concurrency);
+
+            // Initialize display with story information
+            let story_infos: Vec<_> = prd
+                .user_stories
+                .iter()
+                .map(|s| {
+                    crate::ui::parallel_events::StoryDisplayInfo::new(&s.id, &s.title, s.priority)
+                })
+                .collect();
+            display.init_stories(&story_infos);
+
+            // Spawn event handling task
+            Some(tokio::spawn(async move {
+                let mut rx = ui_rx;
+                while let Some(event) = rx.recv().await {
+                    match &event {
+                        ParallelUIEvent::StoryStarted {
+                            story,
+                            iteration,
+                            concurrent_count: _,
+                        } => {
+                            display.story_started(
+                                &story.id,
+                                &story.title,
+                                *iteration,
+                                5, // Default max iterations
+                            );
+                        }
+                        ParallelUIEvent::IterationUpdate {
+                            story_id,
+                            iteration,
+                            max_iterations,
+                            message: _,
+                        } => {
+                            // We need story title - use story_id as fallback
+                            display.update_iteration(
+                                story_id,
+                                story_id,
+                                *iteration,
+                                *max_iterations,
+                            );
+                        }
+                        ParallelUIEvent::StoryCompleted {
+                            story_id,
+                            iterations_used,
+                            duration_ms: _,
+                        } => {
+                            display.story_completed(story_id, story_id, *iterations_used, None);
+                        }
+                        ParallelUIEvent::StoryFailed {
+                            story_id,
+                            error,
+                            iteration: _,
+                        } => {
+                            display.story_failed(story_id, story_id, error);
+                        }
+                        ParallelUIEvent::ConflictDeferred {
+                            story_id,
+                            blocking_story_id,
+                            conflicting_files: _,
+                        } => {
+                            display.story_deferred(story_id, story_id, blocking_story_id);
+                        }
+                        ParallelUIEvent::SequentialRetryStarted { story_id, reason } => {
+                            display.story_sequential_retry(story_id, story_id, reason);
+                        }
+                        ParallelUIEvent::GateUpdate { .. }
+                        | ParallelUIEvent::ReconciliationStatus { .. } => {
+                            // These events don't have direct display methods yet
+                        }
+                        ParallelUIEvent::KeyboardToggle { .. }
+                        | ParallelUIEvent::GracefulQuitRequested
+                        | ParallelUIEvent::ImmediateInterrupt => {
+                            // Keyboard events are handled separately by the keyboard listener
+                        }
+                    }
+                }
+            }))
+        } else {
+            // Drop the receiver if UI is not enabled
+            drop(ui_rx);
+            None
+        };
+
+        // Store sender for use in spawned tasks (only if UI enabled)
+        let ui_sender: Option<mpsc::Sender<ParallelUIEvent>> = if should_enable_ui {
+            Some(ui_tx)
+        } else {
+            drop(ui_tx);
+            None
+        };
+
+        // Build story info lookup for event creation
+        let story_info_map: HashMap<String, StoryDisplayInfo> = prd
+            .user_stories
+            .iter()
+            .map(|s| {
+                (
+                    s.id.clone(),
+                    StoryDisplayInfo::new(&s.id, &s.title, s.priority),
+                )
+            })
+            .collect();
+
         // Main execution loop
         loop {
             // Get current state snapshot
@@ -334,13 +457,34 @@ impl ParallelRunner {
             // that have overlapping target_files with higher-priority stories
             let (ready_stories, conflicts) = filter_conflicting_stories(ready_stories);
 
-            // Log when sequential fallback is triggered due to conflicts
+            // Send ConflictDeferred events when stories are deferred due to conflicts
             for (deferred_id, higher_priority_id) in &conflicts {
-                eprintln!(
-                    "[parallel] Conflict fallback: {} conflicts with {} over target files. \
-                     Running {} first, {} deferred to next batch.",
-                    deferred_id, higher_priority_id, higher_priority_id, deferred_id
-                );
+                if let Some(ref sender) = ui_sender {
+                    // Find conflicting files between the two stories
+                    let deferred_story = graph.get_story(deferred_id);
+                    let blocking_story = graph.get_story(higher_priority_id);
+                    let conflicting_files: Vec<PathBuf> = if let (Some(deferred), Some(blocking)) =
+                        (deferred_story, blocking_story)
+                    {
+                        let deferred_files: HashSet<&String> =
+                            deferred.target_files.iter().collect();
+                        blocking
+                            .target_files
+                            .iter()
+                            .filter(|f| deferred_files.contains(f))
+                            .map(PathBuf::from)
+                            .collect()
+                    } else {
+                        Vec::new()
+                    };
+
+                    let event = ParallelUIEvent::ConflictDeferred {
+                        story_id: deferred_id.clone(),
+                        blocking_story_id: higher_priority_id.clone(),
+                        conflicting_files,
+                    };
+                    let _ = sender.try_send(event);
+                }
             }
 
             // Check if we're done or stuck
@@ -373,6 +517,15 @@ impl ParallelRunner {
 
             // Spawn tasks for ready stories (up to available semaphore permits)
             let mut handles = Vec::new();
+
+            // Count concurrent stories for event reporting
+            let concurrent_count = {
+                let state = self.execution_state.read().await;
+                state.in_flight.len()
+                    + ready_stories
+                        .len()
+                        .min(self.config.max_concurrency as usize)
+            };
 
             for story in ready_stories {
                 let story_id = story.id.clone();
@@ -409,17 +562,49 @@ impl ParallelRunner {
 
                 let execution_state = self.execution_state.clone();
                 let story_id_clone = story_id.clone();
+                let task_ui_sender = ui_sender.clone();
+                let story_info = story_info_map
+                    .get(&story_id)
+                    .cloned()
+                    .unwrap_or_else(|| StoryDisplayInfo::new(&story_id, &story_id, story.priority));
 
                 let handle = tokio::spawn(async move {
                     // Hold the permit until the task completes (RAII)
                     let _permit = permit;
 
+                    // Send StoryStarted event
+                    let start_time = Instant::now();
+                    if let Some(ref sender) = task_ui_sender {
+                        let event = ParallelUIEvent::StoryStarted {
+                            story: story_info.clone(),
+                            iteration: 1,
+                            concurrent_count,
+                        };
+                        let _ = sender.try_send(event);
+                    }
+
                     let executor = StoryExecutor::new(executor_config);
                     let (_cancel_tx, cancel_rx) = watch::channel(false);
 
+                    // Clone for iteration callback closure
+                    let iter_story_id = story_id_clone.clone();
+                    let iter_ui_sender = task_ui_sender.clone();
+
                     let result = executor
-                        .execute_story(&story_id_clone, cancel_rx, |_iter, _max| {})
+                        .execute_story(&story_id_clone, cancel_rx, |iter, max| {
+                            if let Some(ref sender) = iter_ui_sender {
+                                let event = ParallelUIEvent::IterationUpdate {
+                                    story_id: iter_story_id.clone(),
+                                    iteration: iter,
+                                    max_iterations: max,
+                                    message: None,
+                                };
+                                let _ = sender.try_send(event);
+                            }
+                        })
                         .await;
+
+                    let duration_ms = start_time.elapsed().as_millis() as u64;
 
                     // Update state based on result
                     let mut state = execution_state.write().await;
@@ -430,17 +615,46 @@ impl ParallelRunner {
                     match result {
                         Ok(exec_result) if exec_result.success => {
                             state.completed.insert(story_id_clone.clone());
+                            // Send StoryCompleted event
+                            if let Some(ref sender) = task_ui_sender {
+                                let event = ParallelUIEvent::StoryCompleted {
+                                    story_id: story_id_clone.clone(),
+                                    iterations_used: exec_result.iterations_used,
+                                    duration_ms,
+                                };
+                                let _ = sender.try_send(event);
+                            }
                             (story_id_clone, true, exec_result.iterations_used)
                         }
                         Ok(exec_result) => {
                             let error_msg = exec_result
                                 .error
                                 .unwrap_or_else(|| "Unknown error".to_string());
-                            state.failed.insert(story_id_clone.clone(), error_msg);
+                            state
+                                .failed
+                                .insert(story_id_clone.clone(), error_msg.clone());
+                            // Send StoryFailed event
+                            if let Some(ref sender) = task_ui_sender {
+                                let event = ParallelUIEvent::StoryFailed {
+                                    story_id: story_id_clone.clone(),
+                                    error: error_msg,
+                                    iteration: exec_result.iterations_used,
+                                };
+                                let _ = sender.try_send(event);
+                            }
                             (story_id_clone, false, exec_result.iterations_used)
                         }
                         Err(e) => {
                             state.failed.insert(story_id_clone.clone(), e.to_string());
+                            // Send StoryFailed event
+                            if let Some(ref sender) = task_ui_sender {
+                                let event = ParallelUIEvent::StoryFailed {
+                                    story_id: story_id_clone.clone(),
+                                    error: e.to_string(),
+                                    iteration: 1,
+                                };
+                                let _ = sender.try_send(event);
+                            }
                             (story_id_clone, false, 1)
                         }
                     }
@@ -466,7 +680,14 @@ impl ParallelRunner {
 
                 // Run reconciliation after each batch completes
                 let reconciliation_result = self
-                    .run_reconciliation(&batch_story_ids, &graph, &agent, &mut total_iterations)
+                    .run_reconciliation(
+                        &batch_story_ids,
+                        &graph,
+                        &agent,
+                        &mut total_iterations,
+                        &ui_sender,
+                        &story_info_map,
+                    )
                     .await;
 
                 // If reconciliation failed and we couldn't recover, return error
@@ -494,44 +715,54 @@ impl ParallelRunner {
         graph: &DependencyGraph,
         agent: &str,
         total_iterations: &mut u32,
+        ui_sender: &Option<mpsc::Sender<ParallelUIEvent>>,
+        story_info_map: &HashMap<String, StoryDisplayInfo>,
     ) -> Option<String> {
         let engine = ReconciliationEngine::new(self.base_config.working_dir.clone());
         let result = engine.reconcile();
 
         match result {
             ReconciliationResult::Clean => {
-                eprintln!("[parallel] Reconciliation: clean after batch");
+                // Send ReconciliationStatus event for clean result
+                if let Some(ref sender) = ui_sender {
+                    let event = ParallelUIEvent::ReconciliationStatus {
+                        success: true,
+                        issues_count: 0,
+                        message: "Clean after batch".to_string(),
+                    };
+                    let _ = sender.try_send(event);
+                }
                 None
             }
             ReconciliationResult::IssuesFound(issues) => {
-                // Log all issues found
-                for issue in &issues {
-                    match issue {
+                // Build issue summary message
+                let issue_descriptions: Vec<String> = issues
+                    .iter()
+                    .map(|issue| match issue {
                         ReconciliationIssue::GitConflict { affected_files } => {
-                            eprintln!(
-                                "[parallel] Reconciliation issue: git conflict in files: {}",
-                                affected_files.join(", ")
-                            );
+                            format!("git conflict in: {}", affected_files.join(", "))
                         }
                         ReconciliationIssue::TypeMismatch { file, error } => {
-                            eprintln!(
-                                "[parallel] Reconciliation issue: type error in {}: {}",
-                                file, error
-                            );
+                            format!("type error in {}: {}", file, error)
                         }
                         ReconciliationIssue::ImportDuplicate => {
-                            eprintln!("[parallel] Reconciliation issue: duplicate import detected");
+                            "duplicate import detected".to_string()
                         }
-                    }
+                    })
+                    .collect();
+
+                // Send ReconciliationStatus event for issues found
+                if let Some(ref sender) = ui_sender {
+                    let event = ParallelUIEvent::ReconciliationStatus {
+                        success: false,
+                        issues_count: issues.len(),
+                        message: format!("Issues found: {}", issue_descriptions.join("; ")),
+                    };
+                    let _ = sender.try_send(event);
                 }
 
                 // If fallback is enabled, retry affected stories sequentially
                 if self.config.fallback_to_sequential {
-                    eprintln!(
-                        "[parallel] Fallback enabled: retrying {} stories sequentially",
-                        batch_story_ids.len()
-                    );
-
                     // Get affected stories - for now, we retry all stories from the batch
                     // that have issues (based on file overlap with issue files)
                     let affected_story_ids =
@@ -549,7 +780,29 @@ impl ParallelRunner {
 
                         // Retry affected stories sequentially
                         for story_id in &affected_story_ids {
-                            eprintln!("[parallel] Sequential retry: executing story {}", story_id);
+                            // Send SequentialRetryStarted event
+                            if let Some(ref sender) = ui_sender {
+                                let event = ParallelUIEvent::SequentialRetryStarted {
+                                    story_id: story_id.clone(),
+                                    reason: "Reconciliation issues detected".to_string(),
+                                };
+                                let _ = sender.try_send(event);
+                            }
+
+                            // Send StoryStarted event for sequential retry
+                            let start_time = Instant::now();
+                            if let Some(ref sender) = ui_sender {
+                                let story_info =
+                                    story_info_map.get(story_id).cloned().unwrap_or_else(|| {
+                                        StoryDisplayInfo::new(story_id, story_id, 0)
+                                    });
+                                let event = ParallelUIEvent::StoryStarted {
+                                    story: story_info,
+                                    iteration: 1,
+                                    concurrent_count: 1,
+                                };
+                                let _ = sender.try_send(event);
+                            }
 
                             let executor_config = ExecutorConfig {
                                 prd_path: self.base_config.prd_path.clone(),
@@ -564,19 +817,40 @@ impl ParallelRunner {
                             let executor = StoryExecutor::new(executor_config);
                             let (_cancel_tx, cancel_rx) = watch::channel(false);
 
+                            // Clone for iteration callback closure
+                            let iter_story_id = story_id.clone();
+                            let iter_ui_sender = ui_sender.clone();
+
                             let result = executor
-                                .execute_story(story_id, cancel_rx, |_iter, _max| {})
+                                .execute_story(story_id, cancel_rx, |iter, max| {
+                                    if let Some(ref sender) = iter_ui_sender {
+                                        let event = ParallelUIEvent::IterationUpdate {
+                                            story_id: iter_story_id.clone(),
+                                            iteration: iter,
+                                            max_iterations: max,
+                                            message: None,
+                                        };
+                                        let _ = sender.try_send(event);
+                                    }
+                                })
                                 .await;
+
+                            let duration_ms = start_time.elapsed().as_millis() as u64;
 
                             match result {
                                 Ok(exec_result) if exec_result.success => {
                                     let mut state = self.execution_state.write().await;
                                     state.completed.insert(story_id.clone());
                                     *total_iterations += exec_result.iterations_used;
-                                    eprintln!(
-                                        "[parallel] Sequential retry: story {} succeeded",
-                                        story_id
-                                    );
+                                    // Send StoryCompleted event
+                                    if let Some(ref sender) = ui_sender {
+                                        let event = ParallelUIEvent::StoryCompleted {
+                                            story_id: story_id.clone(),
+                                            iterations_used: exec_result.iterations_used,
+                                            duration_ms,
+                                        };
+                                        let _ = sender.try_send(event);
+                                    }
                                 }
                                 Ok(exec_result) => {
                                     let mut state = self.execution_state.write().await;
@@ -585,19 +859,29 @@ impl ParallelRunner {
                                         .unwrap_or_else(|| "Unknown error".to_string());
                                     state.failed.insert(story_id.clone(), error_msg.clone());
                                     *total_iterations += exec_result.iterations_used;
-                                    eprintln!(
-                                        "[parallel] Sequential retry: story {} failed: {}",
-                                        story_id, error_msg
-                                    );
+                                    // Send StoryFailed event
+                                    if let Some(ref sender) = ui_sender {
+                                        let event = ParallelUIEvent::StoryFailed {
+                                            story_id: story_id.clone(),
+                                            error: error_msg,
+                                            iteration: exec_result.iterations_used,
+                                        };
+                                        let _ = sender.try_send(event);
+                                    }
                                 }
                                 Err(e) => {
                                     let mut state = self.execution_state.write().await;
                                     state.failed.insert(story_id.clone(), e.to_string());
                                     *total_iterations += 1;
-                                    eprintln!(
-                                        "[parallel] Sequential retry: story {} error: {}",
-                                        story_id, e
-                                    );
+                                    // Send StoryFailed event
+                                    if let Some(ref sender) = ui_sender {
+                                        let event = ParallelUIEvent::StoryFailed {
+                                            story_id: story_id.clone(),
+                                            error: e.to_string(),
+                                            iteration: 1,
+                                        };
+                                        let _ = sender.try_send(event);
+                                    }
                                 }
                             }
                         }
@@ -606,16 +890,30 @@ impl ParallelRunner {
                         let post_retry_result = engine.reconcile();
                         match post_retry_result {
                             ReconciliationResult::Clean => {
-                                eprintln!(
-                                    "[parallel] Reconciliation: clean after sequential retry"
-                                );
+                                // Send ReconciliationStatus event for clean after retry
+                                if let Some(ref sender) = ui_sender {
+                                    let event = ParallelUIEvent::ReconciliationStatus {
+                                        success: true,
+                                        issues_count: 0,
+                                        message: "Clean after sequential retry".to_string(),
+                                    };
+                                    let _ = sender.try_send(event);
+                                }
                                 None
                             }
                             ReconciliationResult::IssuesFound(remaining_issues) => {
-                                eprintln!(
-                                    "[parallel] Reconciliation: {} issues remain after sequential retry",
-                                    remaining_issues.len()
-                                );
+                                // Send ReconciliationStatus event for remaining issues
+                                if let Some(ref sender) = ui_sender {
+                                    let event = ParallelUIEvent::ReconciliationStatus {
+                                        success: false,
+                                        issues_count: remaining_issues.len(),
+                                        message: format!(
+                                            "{} issues remain after sequential retry",
+                                            remaining_issues.len()
+                                        ),
+                                    };
+                                    let _ = sender.try_send(event);
+                                }
                                 Some(format!(
                                     "Reconciliation failed with {} issues after sequential retry",
                                     remaining_issues.len()
