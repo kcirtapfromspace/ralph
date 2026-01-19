@@ -18,6 +18,11 @@ use tokio::sync::{watch, Mutex};
 
 use crate::checkpoint::{Checkpoint, CheckpointManager, PauseReason, StoryCheckpoint};
 use crate::error::classification::{ErrorCategory, TimeoutReason};
+use crate::iteration::{
+    context::{ErrorCategory as IterErrorCategory, IterationContext, IterationError},
+    futility::{FutileRetryDetector, FutilityConfig, FutilityVerdict},
+};
+use crate::metrics::MetricsCollector;
 use crate::timeout::{HeartbeatEvent, HeartbeatMonitor, TimeoutConfig};
 
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
@@ -38,6 +43,10 @@ pub struct ExecutionResult {
     pub gate_results: Vec<GateResult>,
     /// Files that were changed
     pub files_changed: Vec<String>,
+    /// Futility verdict if execution was stopped early
+    pub futility_verdict: Option<FutilityVerdict>,
+    /// Iteration context with error history and learnings
+    pub iteration_context: Option<IterationContext>,
 }
 
 /// Error types for story execution
@@ -115,6 +124,12 @@ pub struct ExecutorConfig {
     pub git_mutex: Option<Arc<Mutex<()>>>,
     /// Timeout configuration for execution limits
     pub timeout_config: TimeoutConfig,
+    /// Enable futile retry detection to stop early on hopeless patterns
+    pub enable_futility_detection: bool,
+    /// Configuration for futility detection thresholds
+    pub futility_config: FutilityConfig,
+    /// Optional metrics collector for tracking execution statistics
+    pub metrics_collector: Option<MetricsCollector>,
 }
 
 impl Default for ExecutorConfig {
@@ -128,6 +143,9 @@ impl Default for ExecutorConfig {
             max_iterations: 10,
             git_mutex: None,
             timeout_config: TimeoutConfig::default(),
+            enable_futility_detection: true,
+            futility_config: FutilityConfig::default(),
+            metrics_collector: None,
         }
     }
 }
@@ -192,22 +210,51 @@ impl StoryExecutor {
         let prd = self.load_prd()?;
         let story = self.find_story(&prd, story_id)?;
 
-        // Build the prompt for the agent
-        let prompt = self.build_agent_prompt(story, &prd);
+        // Initialize iteration context for learning transfer
+        let mut iter_context = IterationContext::new(story_id, self.config.max_iterations);
 
+        // Initialize futility detector if enabled
+        let futility_detector = if self.config.enable_futility_detection {
+            Some(FutileRetryDetector::with_config(
+                self.config.futility_config.clone(),
+            ))
+        } else {
+            None
+        };
+
+        // Record metrics start if collector is available
+        if let Some(ref collector) = self.config.metrics_collector {
+            collector.start_story(story_id, self.config.max_iterations);
+        }
+
+        let execution_start = std::time::Instant::now();
         let mut iterations_used = 0;
         let mut last_error: Option<String> = None;
-        let mut files_changed: Vec<String>;
+        let mut files_changed: Vec<String> = Vec::new();
+        let mut last_gate_results: Vec<GateResult> = Vec::new();
 
         // Iteration loop
         for iteration in 1..=self.config.max_iterations {
             iterations_used = iteration;
+            iter_context.start_iteration(iteration);
             on_iteration(iteration, self.config.max_iterations);
+
+            // Record iteration in metrics
+            if let Some(ref collector) = self.config.metrics_collector {
+                collector.record_iteration(iteration);
+            }
 
             // Check for cancellation
             if *cancel_receiver.borrow() {
                 return Err(ExecutorError::Cancelled);
             }
+
+            // Build the prompt with iteration context if we have previous errors
+            let prompt = if iter_context.error_history.is_empty() {
+                self.build_agent_prompt(story, &prd)
+            } else {
+                self.build_agent_prompt_with_context(story, &prd, &iter_context)
+            };
 
             // Run the agent
             match self.run_agent(&prompt, iteration).await {
@@ -215,12 +262,62 @@ impl StoryExecutor {
                     files_changed = changed;
                 }
                 Err(ExecutorError::Timeout(msg)) => {
+                    // Record timeout error in context
+                    iter_context.record_error(
+                        IterationError::new(iteration, IterErrorCategory::AgentExecution, &msg)
+                    );
+
+                    // Record in metrics
+                    if let Some(ref collector) = self.config.metrics_collector {
+                        collector.record_error(IterErrorCategory::AgentExecution);
+                    }
+
                     // On timeout, save checkpoint before returning error
                     self.save_timeout_checkpoint(story_id, iteration);
                     return Err(ExecutorError::Timeout(msg));
                 }
                 Err(e) => {
-                    last_error = Some(e.to_string());
+                    let error_msg = e.to_string();
+                    let category = IterErrorCategory::from_error_message(&error_msg, None);
+
+                    // Record error in iteration context
+                    iter_context.record_error(
+                        IterationError::new(iteration, category, &error_msg)
+                    );
+
+                    // Record in metrics
+                    if let Some(ref collector) = self.config.metrics_collector {
+                        collector.record_error(category);
+                    }
+
+                    last_error = Some(error_msg);
+
+                    // Check for futility before continuing
+                    if let Some(ref detector) = futility_detector {
+                        let verdict = detector.analyze(&iter_context);
+                        if !verdict.should_continue() {
+                            // Record metrics completion
+                            if let Some(ref collector) = self.config.metrics_collector {
+                                collector.complete_story(
+                                    false,
+                                    execution_start.elapsed(),
+                                    Some(format!("Futile: {:?}", verdict.reason())),
+                                );
+                            }
+
+                            return Ok(ExecutionResult {
+                                success: false,
+                                commit_hash: None,
+                                error: verdict.reason().map(String::from),
+                                iterations_used,
+                                gate_results: last_gate_results,
+                                files_changed,
+                                futility_verdict: Some(verdict),
+                                iteration_context: Some(iter_context),
+                            });
+                        }
+                    }
+
                     continue; // Try next iteration
                 }
             }
@@ -230,8 +327,19 @@ impl StoryExecutor {
                 return Err(ExecutorError::Cancelled);
             }
 
-            // Run quality gates
+            // Run quality gates with timing
+            let gate_start = std::time::Instant::now();
             let gate_results = self.run_quality_gates();
+            let gate_duration = gate_start.elapsed();
+
+            // Record gate durations in metrics
+            if let Some(ref collector) = self.config.metrics_collector {
+                for gate in &gate_results {
+                    collector.record_gate_duration(&gate.gate_name, gate_duration / gate_results.len() as u32);
+                }
+            }
+
+            last_gate_results = gate_results.clone();
             let all_passed = QualityGateChecker::all_passed(&gate_results);
 
             if all_passed {
@@ -240,6 +348,11 @@ impl StoryExecutor {
                 self.update_prd_passes(story_id)?;
                 self.append_progress(story, &files_changed, iteration)?;
 
+                // Record successful completion in metrics
+                if let Some(ref collector) = self.config.metrics_collector {
+                    collector.complete_story(true, execution_start.elapsed(), None);
+                }
+
                 return Ok(ExecutionResult {
                     success: true,
                     commit_hash: Some(commit_hash),
@@ -247,24 +360,89 @@ impl StoryExecutor {
                     iterations_used,
                     gate_results,
                     files_changed,
+                    futility_verdict: None,
+                    iteration_context: Some(iter_context),
                 });
             }
 
-            // Quality gates failed, prepare error message for next iteration
+            // Quality gates failed, record in iteration context
             let failed_gates: Vec<&str> = gate_results
                 .iter()
                 .filter(|g| !g.passed)
                 .map(|g| g.gate_name.as_str())
                 .collect();
+
+            // Record each failed gate as an error
+            for gate_name in &failed_gates {
+                let category = IterErrorCategory::from_error_message("", Some(gate_name));
+                iter_context.record_error(
+                    IterationError::new(iteration, category, format!("Gate '{}' failed", gate_name))
+                        .with_gate(*gate_name)
+                        .with_files(files_changed.clone()),
+                );
+
+                // Record in metrics
+                if let Some(ref collector) = self.config.metrics_collector {
+                    collector.record_error(category);
+                }
+            }
+
             last_error = Some(format!("Quality gates failed: {}", failed_gates.join(", ")));
+
+            // Check for futility after gate failures
+            if let Some(ref detector) = futility_detector {
+                let verdict = detector.analyze(&iter_context);
+                if !verdict.should_continue() {
+                    // Record metrics completion
+                    if let Some(ref collector) = self.config.metrics_collector {
+                        collector.complete_story(
+                            false,
+                            execution_start.elapsed(),
+                            Some(format!("Futile: {:?}", verdict.reason())),
+                        );
+                    }
+
+                    return Ok(ExecutionResult {
+                        success: false,
+                        commit_hash: None,
+                        error: verdict.reason().map(String::from),
+                        iterations_used,
+                        gate_results,
+                        files_changed,
+                        futility_verdict: Some(verdict),
+                        iteration_context: Some(iter_context),
+                    });
+                }
+            }
         }
 
         // Max iterations reached without success
+        // Record metrics completion
+        if let Some(ref collector) = self.config.metrics_collector {
+            collector.complete_story(
+                false,
+                execution_start.elapsed(),
+                last_error.clone(),
+            );
+        }
+
         Err(ExecutorError::AgentError(format!(
             "Failed after {} iterations. Last error: {}",
             iterations_used,
             last_error.unwrap_or_else(|| "Unknown error".to_string())
         )))
+    }
+
+    /// Build an agent prompt that includes iteration context from previous failures.
+    fn build_agent_prompt_with_context(
+        &self,
+        story: &PrdUserStory,
+        prd: &PrdFile,
+        context: &IterationContext,
+    ) -> String {
+        let base_prompt = self.build_agent_prompt(story, prd);
+        let context_section = context.build_prompt_context();
+        format!("{}{}", base_prompt, context_section)
     }
 
     /// Load the PRD file

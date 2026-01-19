@@ -576,6 +576,7 @@ impl ParallelRunner {
                     max_iterations: self.base_config.max_iterations_per_story,
                     git_mutex: Some(self.git_mutex.clone()),
                     timeout_config: self.config.timeout_config.clone(),
+                    ..Default::default()
                 };
 
                 let execution_state = self.execution_state.clone();
@@ -871,6 +872,7 @@ impl ParallelRunner {
                                 max_iterations: self.base_config.max_iterations_per_story,
                                 git_mutex: Some(self.git_mutex.clone()),
                                 timeout_config: self.config.timeout_config.clone(),
+                                ..Default::default()
                             };
 
                             let executor = StoryExecutor::new(executor_config);

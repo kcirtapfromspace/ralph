@@ -331,7 +331,9 @@ impl ErrorDetector {
         for pattern in &self.patterns {
             if pattern.matches(text) {
                 // Safe to unwrap since matches() returned true
-                let matched = pattern.find(text).expect("pattern should match after matches() returned true");
+                let matched = pattern
+                    .find(text)
+                    .expect("pattern should match after matches() returned true");
                 return Some(
                     ClassifiedError::new(
                         pattern.category.clone(),

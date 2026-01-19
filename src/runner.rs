@@ -323,6 +323,7 @@ impl Runner {
                         max_iterations: remaining_iterations,
                         git_mutex: None, // Sequential execution doesn't need mutex
                         timeout_config: crate::timeout::TimeoutConfig::default(),
+                        ..Default::default()
                     };
 
                     let executor = StoryExecutor::new(executor_config);

@@ -10,20 +10,15 @@ use std::time::Duration;
 use crate::error::ErrorCategory;
 
 /// State of the pause controller.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum PauseState {
     /// Execution is running normally.
+    #[default]
     Running,
     /// A pause has been requested but not yet executed.
     PauseRequested,
     /// Execution is paused.
     Paused,
-}
-
-impl Default for PauseState {
-    fn default() -> Self {
-        Self::Running
-    }
 }
 
 /// Controller for managing pause/resume state.
