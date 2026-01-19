@@ -240,7 +240,7 @@
       "description": "As a user, I want a status command to check execution state without starting a run.",
       "id": "US-013",
       "notes": "Exit code 75 = EX_TEMPFAIL for temporary failure",
-      "passes": false,
+      "passes": true,
       "priority": 13,
       "title": "Add ralph status command"
     },
