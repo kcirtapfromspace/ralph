@@ -93,6 +93,10 @@ struct Cli {
     #[arg(long, default_value = "10")]
     max_iterations: u32,
 
+    /// Agent command to use (claude, codex, amp, or custom)
+    #[arg(long)]
+    agent: Option<String>,
+
     /// Enable parallel story execution
     #[arg(long)]
     parallel: bool,
@@ -137,6 +141,10 @@ enum Commands {
         /// Maximum iterations per story
         #[arg(long, default_value = "10")]
         max_iterations: u32,
+
+        /// Agent command to use (claude, codex, amp, or custom)
+        #[arg(long)]
+        agent: Option<String>,
 
         /// Enable parallel story execution
         #[arg(long)]
@@ -303,6 +311,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             println!("  --no-resume              Skip checkpoint prompt (do not resume)");
             println!("  --timeout <SECONDS>      Agent timeout in seconds (overrides default)");
             println!("  --no-checkpoint          Disable checkpointing");
+            println!("  --agent <CMD>            Agent command (claude, codex, amp, or custom)");
             println!("  -h, --help               Print help information");
             return Ok(ExitCode::SUCCESS);
         }
@@ -310,6 +319,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             ref prd,
             ref dir,
             max_iterations,
+            ref agent,
             parallel,
             max_concurrency,
             resume,
@@ -329,6 +339,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                 no_resume,
                 timeout,
                 no_checkpoint,
+                agent.clone(),
             )
             .await?;
         }
@@ -465,6 +476,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
                     cli.no_resume,
                     cli.timeout,
                     cli.no_checkpoint,
+                    cli.agent.clone(),
                 )
                 .await?;
             } else {
@@ -511,6 +523,7 @@ async fn run_stories(
     no_resume: bool,
     timeout: Option<u64>,
     no_checkpoint: bool,
+    agent: Option<String>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use ralphmacchio::parallel::scheduler::ParallelRunnerConfig;
 
@@ -537,7 +550,7 @@ async fn run_stories(
         working_dir: working_dir.clone(),
         max_iterations_per_story: max_iterations,
         max_total_iterations: 0, // unlimited
-        agent_command: None,     // auto-detect
+        agent_command: agent,    // auto-detect if None
         display_options,
         parallel,
         parallel_config: Some(parallel_config),

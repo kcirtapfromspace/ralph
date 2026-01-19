@@ -680,7 +680,7 @@ impl RalphMcpServer {
                     state.execution_state = ExecutionState::Idle;
                 }
                 let response = create_run_error_response(&RunStoryError::ExecutionError(
-                    "No agent CLI found. Install Claude Code CLI (claude) or Amp CLI (amp)."
+                    "No agent CLI found. Install Claude Code CLI (claude), Codex CLI (codex), or Amp CLI (amp)."
                         .to_string(),
                 ));
                 return serde_json::to_string_pretty(&response).unwrap_or_else(|e| {

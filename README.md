@@ -5,7 +5,7 @@
 
 ![Ralph](ralph.webp)
 
-Ralph is an autonomous AI agent loop that runs [Claude Code](https://docs.anthropic.com/en/docs/claude-code) repeatedly until all PRD items are complete. Each iteration is a fresh Claude Code instance with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
+Ralph is an autonomous AI agent loop that runs [Claude Code](https://docs.anthropic.com/en/docs/claude-code) or Codex repeatedly until all PRD items are complete. Each iteration is a fresh agent instance with clean context. Memory persists via git history, `progress.txt`, and `prd.json`.
 
 Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
@@ -13,7 +13,8 @@ Based on [Geoffrey Huntley's Ralph pattern](https://ghuntley.com/ralph/).
 
 ## Prerequisites
 
-- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated
+- [Claude Code CLI](https://docs.anthropic.com/en/docs/claude-code) installed and authenticated, or Codex CLI in PATH
+- Optional: local Ollama server for OSS models (e.g. `~/off-quant` with `tilt up`)
 - [Rust](https://rustup.rs) (for building from source)
 - A git repository for your project
 
@@ -85,6 +86,25 @@ Examples:
   ralph 20               Run with 20 max iterations
   ralph -d ./my-project  Run in specified directory
   ralph init             Create prd.json template
+```
+
+## Codex + local models (Ollama)
+
+If you want Ralph to use Codex with local models:
+
+1) Start Ollama (for example, `cd ~/off-quant && tilt up`)
+2) Export Codex settings:
+
+```bash
+export CODEX_OSS=1
+export CODEX_OSS_PROVIDER=ollama
+export CODEX_OSS_MODEL=local/qwen2.5-coder-7b-q4km
+```
+
+3) Run Ralph with Codex:
+
+```bash
+ralph --agent codex
 ```
 
 ## Workflow
