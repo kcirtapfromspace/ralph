@@ -4,6 +4,8 @@
 //! and potential use as a library.
 
 pub mod audit;
+pub mod checkpoint;
+pub mod error;
 pub mod integrations;
 pub mod mcp;
 pub mod parallel;
