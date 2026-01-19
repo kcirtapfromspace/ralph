@@ -256,7 +256,7 @@
       "description": "As a user, I want checkpoints saved automatically during execution.",
       "id": "US-014",
       "notes": "Checkpoint saved at safe points only",
-      "passes": false,
+      "passes": true,
       "priority": 14,
       "title": "Integrate checkpoint save into runner loop"
     },

@@ -13,6 +13,17 @@ use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
 use crate::parallel::scheduler::ParallelRunnerConfig;
 use crate::ui::{DisplayOptions, TuiRunnerDisplay};
 
+/// User's choice when prompted about an existing checkpoint.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ResumeChoice {
+    /// Resume execution from the checkpoint.
+    Resume,
+    /// Discard the checkpoint and start fresh.
+    Discard,
+    /// Show detailed checkpoint information.
+    ViewDetails,
+}
+
 /// Configuration for the runner
 #[derive(Debug, Clone)]
 #[allow(dead_code)] // parallel fields will be used in future stories
