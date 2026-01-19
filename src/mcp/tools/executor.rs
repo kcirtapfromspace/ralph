@@ -263,9 +263,11 @@ impl StoryExecutor {
                 }
                 Err(ExecutorError::Timeout(msg)) => {
                     // Record timeout error in context
-                    iter_context.record_error(
-                        IterationError::new(iteration, IterErrorCategory::AgentExecution, &msg)
-                    );
+                    iter_context.record_error(IterationError::new(
+                        iteration,
+                        IterErrorCategory::AgentExecution,
+                        &msg,
+                    ));
 
                     // Record in metrics
                     if let Some(ref collector) = self.config.metrics_collector {
@@ -281,9 +283,7 @@ impl StoryExecutor {
                     let category = IterErrorCategory::from_error_message(&error_msg, None);
 
                     // Record error in iteration context
-                    iter_context.record_error(
-                        IterationError::new(iteration, category, &error_msg)
-                    );
+                    iter_context.record_error(IterationError::new(iteration, category, &error_msg));
 
                     // Record in metrics
                     if let Some(ref collector) = self.config.metrics_collector {
@@ -335,7 +335,10 @@ impl StoryExecutor {
             // Record gate durations in metrics
             if let Some(ref collector) = self.config.metrics_collector {
                 for gate in &gate_results {
-                    collector.record_gate_duration(&gate.gate_name, gate_duration / gate_results.len() as u32);
+                    collector.record_gate_duration(
+                        &gate.gate_name,
+                        gate_duration / gate_results.len() as u32,
+                    );
                 }
             }
 
@@ -376,9 +379,13 @@ impl StoryExecutor {
             for gate_name in &failed_gates {
                 let category = IterErrorCategory::from_error_message("", Some(gate_name));
                 iter_context.record_error(
-                    IterationError::new(iteration, category, format!("Gate '{}' failed", gate_name))
-                        .with_gate(*gate_name)
-                        .with_files(files_changed.clone()),
+                    IterationError::new(
+                        iteration,
+                        category,
+                        format!("Gate '{}' failed", gate_name),
+                    )
+                    .with_gate(*gate_name)
+                    .with_files(files_changed.clone()),
                 );
 
                 // Record in metrics
@@ -419,11 +426,7 @@ impl StoryExecutor {
         // Max iterations reached without success
         // Record metrics completion
         if let Some(ref collector) = self.config.metrics_collector {
-            collector.complete_story(
-                false,
-                execution_start.elapsed(),
-                last_error.clone(),
-            );
+            collector.complete_story(false, execution_start.elapsed(), last_error.clone());
         }
 
         Err(ExecutorError::AgentError(format!(
