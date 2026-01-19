@@ -1278,7 +1278,10 @@ fn build_agent_invocation(
             prompt.to_string(),
         ];
 
-        if let Ok(model) = std::env::var("CODEX_MODEL") {
+        if let Ok(model) = std::env::var("CODEX_OSS_MODEL") {
+            args.push("--model".to_string());
+            args.push(model);
+        } else if let Ok(model) = std::env::var("CODEX_MODEL") {
             args.push("--model".to_string());
             args.push(model);
         }
@@ -1291,11 +1294,6 @@ fn build_agent_invocation(
             args.push("--oss".to_string());
             args.push("--local-provider".to_string());
             args.push(provider);
-        }
-
-        if let Ok(model) = std::env::var("CODEX_OSS_MODEL") {
-            args.push("--model".to_string());
-            args.push(model);
         }
 
         let mut args_with_dir = vec!["-C".to_string(), project_root.display().to_string()];
