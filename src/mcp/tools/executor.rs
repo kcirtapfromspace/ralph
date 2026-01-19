@@ -13,11 +13,12 @@ use std::process::{Command, Stdio};
 use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
 use std::time::Duration;
+use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::sync::{watch, Mutex};
 
 use crate::checkpoint::{Checkpoint, CheckpointManager, PauseReason, StoryCheckpoint};
 use crate::error::classification::{ErrorCategory, TimeoutReason};
-use crate::timeout::TimeoutConfig;
+use crate::timeout::{HeartbeatEvent, HeartbeatMonitor, TimeoutConfig};
 
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
 use crate::quality::{GateResult, Profile, QualityGateChecker};

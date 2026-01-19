@@ -273,7 +273,7 @@
       "description": "As a user, I want Ralph to prompt for resume when checkpoint exists.",
       "id": "US-015",
       "notes": "Interactive prompt using dialoguer or similar",
-      "passes": false,
+      "passes": true,
       "priority": 15,
       "title": "Integrate checkpoint resume into runner startup"
     },

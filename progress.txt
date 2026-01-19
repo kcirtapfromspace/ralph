@@ -194,3 +194,14 @@ Feature: Error Recovery System
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 21:12 - US-015
+- **What was implemented**: Integrate checkpoint resume into runner startup
+- **Files changed**:
+  - rd.json
+  - rogress.txt
+  - rc/runner.rs
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---
