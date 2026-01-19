@@ -305,7 +305,7 @@
       "description": "As Ralph, I need heartbeat monitoring during agent execution.",
       "id": "US-017",
       "notes": "Stall detection is softer than hard timeout",
-      "passes": false,
+      "passes": true,
       "priority": 17,
       "title": "Integrate heartbeat monitor into agent executor"
     },
