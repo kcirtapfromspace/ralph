@@ -322,6 +322,10 @@ impl StoryExecutor {
     }
 
     /// Run the agent (Claude Code or Amp CLI) to implement the story
+    ///
+    /// This method integrates heartbeat monitoring to detect stalled agents.
+    /// The heartbeat is updated whenever the agent produces output, and stall
+    /// detection triggers a graceful timeout.
     async fn run_agent(&self, prompt: &str, iteration: u32) -> Result<Vec<String>, ExecutorError> {
         let agent_cmd = &self.config.agent_command;
 
@@ -349,32 +353,208 @@ impl StoryExecutor {
             )));
         }
 
-        // Run the agent with the prompt, wrapped in a timeout
-        let timeout_duration = self.config.timeout_config.agent_timeout;
-        let agent_future = tokio::process::Command::new(program)
+        // Create heartbeat monitor for stall detection
+        let (heartbeat_monitor, mut heartbeat_receiver) =
+            HeartbeatMonitor::new(self.config.timeout_config.clone());
+
+        // Start heartbeat monitoring before agent execution
+        heartbeat_monitor.start_monitoring().await;
+
+        // Spawn the agent process with piped stdout/stderr for streaming
+        let mut child = tokio::process::Command::new(program)
             .args(&args)
             .current_dir(&self.config.project_root)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
-            .output();
+            .spawn()
+            .map_err(|e| {
+                ExecutorError::AgentError(format!("Failed to spawn {}: {}", program, e))
+            })?;
 
-        let output = match tokio::time::timeout(timeout_duration, agent_future).await {
-            Ok(result) => result.map_err(|e| {
-                ExecutorError::AgentError(format!("Failed to run {}: {}", program, e))
-            })?,
-            Err(_) => {
-                return Err(ExecutorError::Timeout(format!(
-                    "Agent '{}' timed out after {:?} (iteration {})",
-                    program, timeout_duration, iteration
-                )));
+        // Take ownership of stdout and stderr
+        let stdout = child.stdout.take();
+        let stderr = child.stderr.take();
+
+        // Create readers for stdout and stderr
+        let mut stdout_reader = stdout.map(|s| BufReader::new(s).lines());
+        let mut stderr_reader = stderr.map(|s| BufReader::new(s).lines());
+
+        // Collect stderr for error reporting
+        let mut stderr_output = String::new();
+
+        // Track if we received a stall detection
+        let mut stall_detected = false;
+
+        // Overall timeout for the agent execution
+        let timeout_duration = self.config.timeout_config.agent_timeout;
+        let timeout_deadline = tokio::time::Instant::now() + timeout_duration;
+
+        // Main loop: process output, heartbeat events, and wait for completion
+        loop {
+            tokio::select! {
+                // Check for heartbeat events
+                event = heartbeat_receiver.recv() => {
+                    match event {
+                        Some(HeartbeatEvent::Warning(missed)) => {
+                            // Log warning about missed heartbeats
+                            eprintln!(
+                                "Warning: Agent stall detected - {} missed heartbeats (iteration {})",
+                                missed, iteration
+                            );
+                        }
+                        Some(HeartbeatEvent::StallDetected(missed)) => {
+                            // Stall detected - trigger graceful timeout
+                            eprintln!(
+                                "Agent stall detected: {} missed heartbeats, triggering timeout (iteration {})",
+                                missed, iteration
+                            );
+                            stall_detected = true;
+                            // Kill the child process gracefully
+                            let _ = child.kill().await;
+                            break;
+                        }
+                        None => {
+                            // Channel closed, continue processing
+                        }
+                    }
+                }
+
+                // Read stdout line
+                line = async {
+                    if let Some(ref mut reader) = stdout_reader {
+                        reader.next_line().await
+                    } else {
+                        Ok(None)
+                    }
+                } => {
+                    match line {
+                        Ok(Some(_)) => {
+                            // Activity detected - update heartbeat
+                            heartbeat_monitor.pulse().await;
+                        }
+                        Ok(None) => {
+                            // EOF on stdout
+                            stdout_reader = None;
+                        }
+                        Err(_) => {
+                            stdout_reader = None;
+                        }
+                    }
+                }
+
+                // Read stderr line
+                line = async {
+                    if let Some(ref mut reader) = stderr_reader {
+                        reader.next_line().await
+                    } else {
+                        Ok(None)
+                    }
+                } => {
+                    match line {
+                        Ok(Some(text)) => {
+                            // Activity detected - update heartbeat
+                            heartbeat_monitor.pulse().await;
+                            // Collect stderr for error reporting
+                            stderr_output.push_str(&text);
+                            stderr_output.push('\n');
+                        }
+                        Ok(None) => {
+                            // EOF on stderr
+                            stderr_reader = None;
+                        }
+                        Err(_) => {
+                            stderr_reader = None;
+                        }
+                    }
+                }
+
+                // Check for process completion
+                status = child.wait() => {
+                    match status {
+                        Ok(exit_status) => {
+                            // Stop heartbeat monitoring
+                            heartbeat_monitor.stop().await;
+
+                            if !exit_status.success() {
+                                return Err(ExecutorError::AgentError(format!(
+                                    "{} failed (iteration {}): {}",
+                                    program, iteration, stderr_output.trim()
+                                )));
+                            }
+                            // Process completed successfully
+                            let files_changed = self.get_changed_files()?;
+                            return Ok(files_changed);
+                        }
+                        Err(e) => {
+                            heartbeat_monitor.stop().await;
+                            return Err(ExecutorError::AgentError(format!(
+                                "Failed to wait for {}: {}", program, e
+                            )));
+                        }
+                    }
+                }
+
+                // Overall timeout
+                _ = tokio::time::sleep_until(timeout_deadline) => {
+                    heartbeat_monitor.stop().await;
+                    let _ = child.kill().await;
+                    return Err(ExecutorError::Timeout(format!(
+                        "Agent '{}' timed out after {:?} (iteration {})",
+                        program, timeout_duration, iteration
+                    )));
+                }
             }
-        };
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            return Err(ExecutorError::AgentError(format!(
-                "{} failed (iteration {}): {}",
-                program, iteration, stderr
+            // Check if both readers are done and process hasn't exited yet
+            if stdout_reader.is_none() && stderr_reader.is_none() {
+                // Wait for process to exit
+                match child.wait().await {
+                    Ok(exit_status) => {
+                        heartbeat_monitor.stop().await;
+
+                        if stall_detected {
+                            return Err(ExecutorError::Timeout(format!(
+                                "Agent '{}' stalled (no output for {:?}) (iteration {})",
+                                program,
+                                self.config.timeout_config.heartbeat_interval
+                                    * self.config.timeout_config.missed_heartbeats_threshold,
+                                iteration
+                            )));
+                        }
+
+                        if !exit_status.success() {
+                            return Err(ExecutorError::AgentError(format!(
+                                "{} failed (iteration {}): {}",
+                                program,
+                                iteration,
+                                stderr_output.trim()
+                            )));
+                        }
+
+                        let files_changed = self.get_changed_files()?;
+                        return Ok(files_changed);
+                    }
+                    Err(e) => {
+                        heartbeat_monitor.stop().await;
+                        return Err(ExecutorError::AgentError(format!(
+                            "Failed to wait for {}: {}",
+                            program, e
+                        )));
+                    }
+                }
+            }
+        }
+
+        // Stop heartbeat monitoring after execution completes
+        heartbeat_monitor.stop().await;
+
+        if stall_detected {
+            return Err(ExecutorError::Timeout(format!(
+                "Agent '{}' stalled (no output for {:?}) (iteration {})",
+                program,
+                self.config.timeout_config.heartbeat_interval
+                    * self.config.timeout_config.missed_heartbeats_threshold,
+                iteration
             )));
         }
 

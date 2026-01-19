@@ -338,7 +338,7 @@
       "description": "As a user, I want to press 'p' to pause execution.",
       "id": "US-019",
       "notes": "Pause happens at next safe point, not immediately",
-      "passes": false,
+      "passes": true,
       "priority": 19,
       "title": "Add pause key handler to keyboard input"
     },

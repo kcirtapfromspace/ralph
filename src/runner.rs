@@ -8,8 +8,10 @@ use tokio::sync::watch;
 use chrono::Utc;
 
 use crate::checkpoint::{Checkpoint, CheckpointManager, PauseReason, StoryCheckpoint};
-use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, ExecutorError, StoryExecutor};
+use crate::error::classification::ErrorCategory;
+use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
+use crate::notification::Notification;
 use crate::parallel::scheduler::ParallelRunnerConfig;
 use crate::ui::{DisplayOptions, TuiRunnerDisplay};
 
@@ -378,15 +380,100 @@ impl Runner {
                             }
                         }
                         Err(e) => {
-                            // Save checkpoint on executor error
-                            self.save_checkpoint(
-                                &story_id,
-                                start_iteration,
-                                max_iterations,
-                                Self::error_to_pause_reason(&e),
-                            );
-                            display.fail_story(&story_id, &e.to_string());
-                            // Don't fail the whole run, just continue
+                            // Classify the error using ErrorDetector
+                            let category = e.classify();
+
+                            // Handle based on error category
+                            match &category {
+                                ErrorCategory::Transient(_) => {
+                                    // For transient errors, display retry notification and continue
+                                    // The next iteration will retry automatically
+                                    let notification = Notification::retrying(
+                                        start_iteration,
+                                        max_iterations,
+                                        std::time::Duration::from_secs(0),
+                                        e.to_string(),
+                                    );
+                                    println!("{}", notification);
+                                    self.save_checkpoint(
+                                        &story_id,
+                                        start_iteration,
+                                        max_iterations,
+                                        PauseReason::Error(e.to_string()),
+                                    );
+                                    display.fail_story(&story_id, &e.to_string());
+                                    // Continue to next story, will retry on next run
+                                }
+                                ErrorCategory::UsageLimit(_) => {
+                                    // For usage limit errors, save checkpoint and pause
+                                    let notification = Notification::paused(format!(
+                                        "Usage limit exceeded: {}",
+                                        e
+                                    ));
+                                    println!("{}", notification);
+                                    self.save_checkpoint(
+                                        &story_id,
+                                        start_iteration,
+                                        max_iterations,
+                                        PauseReason::UsageLimitExceeded,
+                                    );
+                                    display.fail_story(&story_id, &e.to_string());
+                                    // Return immediately - user needs to wait or upgrade
+                                    return RunResult {
+                                        all_passed: false,
+                                        stories_passed: self.count_passing_stories().unwrap_or(0),
+                                        total_stories,
+                                        total_iterations,
+                                        error: Some(
+                                            "Usage limit exceeded. Checkpoint saved. Resume later with: ralph --resume".to_string()
+                                        ),
+                                    };
+                                }
+                                ErrorCategory::Fatal(_) => {
+                                    // For fatal errors, stop execution with clear message
+                                    self.save_checkpoint(
+                                        &story_id,
+                                        start_iteration,
+                                        max_iterations,
+                                        PauseReason::Error(e.to_string()),
+                                    );
+                                    display.fail_story(&story_id, &e.to_string());
+                                    // Return immediately - error is unrecoverable
+                                    return RunResult {
+                                        all_passed: false,
+                                        stories_passed: self.count_passing_stories().unwrap_or(0),
+                                        total_stories,
+                                        total_iterations,
+                                        error: Some(format!("Fatal error: {}", e)),
+                                    };
+                                }
+                                ErrorCategory::Timeout(_) => {
+                                    // For timeout errors, save checkpoint and report
+                                    let notification = Notification::timeout(
+                                        std::time::Duration::from_secs(0),
+                                        format!("Story {} execution", story_id),
+                                    );
+                                    println!("{}", notification);
+                                    self.save_checkpoint(
+                                        &story_id,
+                                        start_iteration,
+                                        max_iterations,
+                                        PauseReason::Timeout,
+                                    );
+                                    display.fail_story(&story_id, &e.to_string());
+                                    // Return with checkpoint info
+                                    return RunResult {
+                                        all_passed: false,
+                                        stories_passed: self.count_passing_stories().unwrap_or(0),
+                                        total_stories,
+                                        total_iterations,
+                                        error: Some(format!(
+                                            "Timeout: {}. Checkpoint saved. Resume with: ralph --resume",
+                                            e
+                                        )),
+                                    };
+                                }
+                            }
                         }
                     }
                 }
@@ -479,15 +566,6 @@ impl Runner {
             .collect();
 
         Ok(files)
-    }
-
-    /// Convert an ExecutorError to a PauseReason for checkpointing.
-    fn error_to_pause_reason(error: &ExecutorError) -> PauseReason {
-        match error {
-            ExecutorError::Timeout(_) => PauseReason::Timeout,
-            ExecutorError::Cancelled => PauseReason::UserRequested,
-            _ => PauseReason::Error(error.to_string()),
-        }
     }
 
     /// Check if a checkpoint exists and return it if found.
