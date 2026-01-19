@@ -289,7 +289,7 @@
       "description": "As Ralph, I need agent execution wrapped with timeout.",
       "id": "US-016",
       "notes": "Hard timeout prevents infinite hangs",
-      "passes": false,
+      "passes": true,
       "priority": 16,
       "title": "Integrate timeout wrapper into agent executor"
     },

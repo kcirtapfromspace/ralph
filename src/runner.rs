@@ -145,6 +145,9 @@ impl Runner {
         let mut display =
             TuiRunnerDisplay::with_display_options(self.config.display_options.clone());
 
+        // Handle checkpoint resume at startup
+        let resume_from = self.handle_checkpoint_resume();
+
         // Load and validate PRD
         let prd = match self.load_prd() {
             Ok(prd) => prd,
@@ -196,13 +199,22 @@ impl Runner {
             }
         };
 
-        // Display startup banner
+        // Display startup banner (with resume info if applicable)
+        if let Some(ref checkpoint) = resume_from {
+            println!(
+                "Resuming from checkpoint: {} (iteration {}/{})",
+                checkpoint.story_id, checkpoint.iteration, checkpoint.max_iterations
+            );
+        }
         display.display_startup(
             &self.config.prd_path.display().to_string(),
             &agent,
             passing_count,
             total_stories,
         );
+
+        // Track if we're resuming and need to start from a specific iteration
+        let mut resume_state = resume_from;
 
         // Main loop - continue until all stories pass
         loop {
@@ -228,8 +240,26 @@ impl Runner {
                 .collect();
             display.init_stories(story_status);
 
-            // Find next story to work on (highest priority where passes: false)
-            let next_story = self.find_next_story(&prd);
+            // Determine which story to work on and the starting iteration
+            let (next_story, start_iteration) = if let Some(resume_checkpoint) = resume_state.take()
+            {
+                // Resuming from checkpoint: find the specific story
+                let story = prd
+                    .user_stories
+                    .iter()
+                    .find(|s| s.id == resume_checkpoint.story_id && !s.passes);
+
+                match story {
+                    Some(s) => (Some(s), resume_checkpoint.iteration),
+                    None => {
+                        // Story not found or already passes, fall back to normal selection
+                        (self.find_next_story(&prd), 1)
+                    }
+                }
+            } else {
+                // Normal operation: find next story by priority
+                (self.find_next_story(&prd), 1)
+            };
 
             match next_story {
                 None => {
@@ -252,7 +282,7 @@ impl Runner {
                         // Save checkpoint on reaching iteration limit
                         self.save_checkpoint(
                             &story.id,
-                            1,
+                            start_iteration,
                             self.config.max_iterations_per_story,
                             PauseReason::Error(format!(
                                 "Max total iterations ({}) reached",
@@ -271,8 +301,15 @@ impl Runner {
                         };
                     }
 
-                    // Display story start
+                    // Display story start (indicate if resuming)
+                    if start_iteration > 1 {
+                        println!("  Resuming from iteration {}", start_iteration);
+                    }
                     display.start_story(&story.id, &story.title, story.priority);
+
+                    // Calculate remaining iterations when resuming
+                    let max_iterations = self.config.max_iterations_per_story;
+                    let remaining_iterations = max_iterations.saturating_sub(start_iteration - 1);
 
                     // Execute the story
                     let executor_config = ExecutorConfig {
@@ -281,7 +318,7 @@ impl Runner {
                         progress_path: self.config.working_dir.join("progress.txt"),
                         quality_profile: None,
                         agent_command: agent.clone(),
-                        max_iterations: self.config.max_iterations_per_story,
+                        max_iterations: remaining_iterations,
                         git_mutex: None, // Sequential execution doesn't need mutex
                         timeout_config: crate::timeout::TimeoutConfig::default(),
                     };
@@ -290,18 +327,27 @@ impl Runner {
                     let (_cancel_tx, cancel_rx) = watch::channel(false);
 
                     let story_id = story.id.clone();
-                    let max_iterations = self.config.max_iterations_per_story;
 
                     // Save checkpoint before starting story execution
-                    self.save_checkpoint(&story_id, 1, max_iterations, PauseReason::UserRequested);
+                    self.save_checkpoint(
+                        &story_id,
+                        start_iteration,
+                        max_iterations,
+                        PauseReason::UserRequested,
+                    );
 
                     let result = executor
-                        .execute_story(&story_id, cancel_rx, |iter, max| {
-                            display.update_iteration(iter, max);
+                        .execute_story(&story_id, cancel_rx, |iter, _max| {
+                            // Adjust iteration display to account for resume offset
+                            let adjusted_iter = iter + start_iteration - 1;
+                            display.update_iteration(adjusted_iter, max_iterations);
                         })
                         .await;
 
-                    total_iterations += result.as_ref().map(|r| r.iterations_used).unwrap_or(1);
+                    // Calculate total iterations used (including those before resume)
+                    let iterations_this_run =
+                        result.as_ref().map(|r| r.iterations_used).unwrap_or(1);
+                    total_iterations += iterations_this_run;
 
                     match result {
                         Ok(exec_result) => {
@@ -312,9 +358,11 @@ impl Runner {
                                     .complete_story(&story_id, exec_result.commit_hash.as_deref());
                             } else {
                                 // Save checkpoint on story failure (quality gates didn't pass)
+                                let final_iteration =
+                                    start_iteration + exec_result.iterations_used - 1;
                                 self.save_checkpoint(
                                     &story_id,
-                                    exec_result.iterations_used,
+                                    final_iteration,
                                     max_iterations,
                                     PauseReason::Error(
                                         exec_result
@@ -333,7 +381,7 @@ impl Runner {
                             // Save checkpoint on executor error
                             self.save_checkpoint(
                                 &story_id,
-                                1,
+                                start_iteration,
                                 max_iterations,
                                 Self::error_to_pause_reason(&e),
                             );
@@ -439,6 +487,230 @@ impl Runner {
             ExecutorError::Timeout(_) => PauseReason::Timeout,
             ExecutorError::Cancelled => PauseReason::UserRequested,
             _ => PauseReason::Error(error.to_string()),
+        }
+    }
+
+    /// Check if a checkpoint exists and return it if found.
+    fn check_for_checkpoint(&self) -> Option<Checkpoint> {
+        self.checkpoint_manager
+            .as_ref()
+            .and_then(|manager| manager.load().ok().flatten())
+    }
+
+    /// Display a summary of the checkpoint.
+    fn display_checkpoint_summary(&self, checkpoint: &Checkpoint) {
+        println!();
+        println!("╔══════════════════════════════════════════════════════════════╗");
+        println!("║               Checkpoint Found                               ║");
+        println!("╠══════════════════════════════════════════════════════════════╣");
+
+        // Story information
+        if let Some(ref story) = checkpoint.current_story {
+            println!("║  Story:      {:<48} ║", story.story_id);
+            println!(
+                "║  Iteration:  {}/{:<44} ║",
+                story.iteration, story.max_iterations
+            );
+        } else {
+            println!("║  Story:      (none)                                          ║");
+        }
+
+        // Pause reason
+        let reason_str = match &checkpoint.pause_reason {
+            PauseReason::UsageLimitExceeded => "Usage limit exceeded".to_string(),
+            PauseReason::RateLimited => "Rate limited".to_string(),
+            PauseReason::UserRequested => "User requested".to_string(),
+            PauseReason::Timeout => "Timeout".to_string(),
+            PauseReason::Error(msg) => {
+                let truncated = if msg.len() > 40 {
+                    format!("{}...", &msg[..37])
+                } else {
+                    msg.clone()
+                };
+                format!("Error: {}", truncated)
+            }
+        };
+        println!("║  Reason:     {:<48} ║", reason_str);
+
+        // Age
+        let now = Utc::now();
+        let age = now.signed_duration_since(checkpoint.created_at);
+        let age_str = Self::format_duration(age);
+        println!("║  Age:        {:<48} ║", age_str);
+
+        println!("╚══════════════════════════════════════════════════════════════╝");
+        println!();
+    }
+
+    /// Display detailed checkpoint information.
+    fn display_checkpoint_details(&self, checkpoint: &Checkpoint) {
+        println!();
+        println!("═══════════════════════════════════════════════════════════════");
+        println!("                    Checkpoint Details                          ");
+        println!("═══════════════════════════════════════════════════════════════");
+        println!();
+
+        // Basic info
+        println!("Version:       {}", checkpoint.version);
+        println!(
+            "Created:       {}",
+            checkpoint.created_at.format("%Y-%m-%d %H:%M:%S UTC")
+        );
+
+        // Age
+        let now = Utc::now();
+        let age = now.signed_duration_since(checkpoint.created_at);
+        println!("Age:           {}", Self::format_duration(age));
+        println!();
+
+        // Story checkpoint details
+        if let Some(ref story) = checkpoint.current_story {
+            println!("Story Information:");
+            println!("  ID:          {}", story.story_id);
+            println!(
+                "  Iteration:   {} of {}",
+                story.iteration, story.max_iterations
+            );
+            println!(
+                "  Remaining:   {} iterations",
+                story.max_iterations.saturating_sub(story.iteration)
+            );
+            println!();
+        }
+
+        // Pause reason
+        println!("Pause Reason:");
+        match &checkpoint.pause_reason {
+            PauseReason::UsageLimitExceeded => {
+                println!("  Type:        Usage Limit Exceeded");
+                println!("  Details:     API usage quota has been exhausted");
+            }
+            PauseReason::RateLimited => {
+                println!("  Type:        Rate Limited");
+                println!("  Details:     Too many requests, rate limit applied");
+            }
+            PauseReason::UserRequested => {
+                println!("  Type:        User Requested");
+                println!("  Details:     Execution was paused by user action");
+            }
+            PauseReason::Timeout => {
+                println!("  Type:        Timeout");
+                println!("  Details:     Operation exceeded configured timeout");
+            }
+            PauseReason::Error(msg) => {
+                println!("  Type:        Error");
+                println!("  Details:     {}", msg);
+            }
+        }
+        println!();
+
+        // Uncommitted files
+        if !checkpoint.uncommitted_files.is_empty() {
+            println!(
+                "Uncommitted Files ({}):",
+                checkpoint.uncommitted_files.len()
+            );
+            for file in &checkpoint.uncommitted_files {
+                println!("  - {}", file);
+            }
+            println!();
+        }
+
+        println!("═══════════════════════════════════════════════════════════════");
+        println!();
+    }
+
+    /// Prompt the user for their choice regarding the checkpoint.
+    fn prompt_resume_choice(&self) -> ResumeChoice {
+        loop {
+            print!("Choose action: [R]esume / [D]iscard / [V]iew details: ");
+            let _ = io::stdout().flush();
+
+            let mut input = String::new();
+            if io::stdin().read_line(&mut input).is_err() {
+                // If we can't read stdin, default to discard
+                return ResumeChoice::Discard;
+            }
+
+            let input = input.trim().to_lowercase();
+            match input.as_str() {
+                "r" | "resume" => return ResumeChoice::Resume,
+                "d" | "discard" => return ResumeChoice::Discard,
+                "v" | "view" | "view details" => return ResumeChoice::ViewDetails,
+                "" => {
+                    // Default to resume on empty input
+                    return ResumeChoice::Resume;
+                }
+                _ => {
+                    println!("Invalid choice. Please enter R, D, or V.");
+                }
+            }
+        }
+    }
+
+    /// Handle the checkpoint resume flow at startup.
+    ///
+    /// Returns the story checkpoint to resume from, if any.
+    fn handle_checkpoint_resume(&self) -> Option<StoryCheckpoint> {
+        // Check if checkpointing is disabled
+        if self.config.no_checkpoint {
+            return None;
+        }
+
+        // Check for existing checkpoint
+        let checkpoint = self.check_for_checkpoint()?;
+
+        // Handle --no-resume flag: discard without prompt
+        if self.config.no_resume {
+            self.clear_checkpoint();
+            return None;
+        }
+
+        // Handle --resume flag: auto-resume without prompt
+        if self.config.resume {
+            return checkpoint.current_story;
+        }
+
+        // Interactive mode: prompt user
+        self.display_checkpoint_summary(&checkpoint);
+
+        loop {
+            let choice = self.prompt_resume_choice();
+            match choice {
+                ResumeChoice::Resume => {
+                    return checkpoint.current_story;
+                }
+                ResumeChoice::Discard => {
+                    self.clear_checkpoint();
+                    return None;
+                }
+                ResumeChoice::ViewDetails => {
+                    self.display_checkpoint_details(&checkpoint);
+                    // Continue the loop to prompt again
+                }
+            }
+        }
+    }
+
+    /// Format a duration in a human-readable way.
+    fn format_duration(duration: chrono::Duration) -> String {
+        let total_seconds = duration.num_seconds().unsigned_abs();
+
+        if total_seconds < 60 {
+            format!("{} seconds ago", total_seconds)
+        } else if total_seconds < 3600 {
+            let minutes = total_seconds / 60;
+            format!(
+                "{} minute{} ago",
+                minutes,
+                if minutes == 1 { "" } else { "s" }
+            )
+        } else if total_seconds < 86400 {
+            let hours = total_seconds / 3600;
+            format!("{} hour{} ago", hours, if hours == 1 { "" } else { "s" })
+        } else {
+            let days = total_seconds / 86400;
+            format!("{} day{} ago", days, if days == 1 { "" } else { "s" })
         }
     }
 }
