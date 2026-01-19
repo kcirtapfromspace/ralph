@@ -155,7 +155,7 @@
       "description": "As a user, I want to manually pause execution and resume later.",
       "id": "US-008",
       "notes": "Pause happens between iterations, not mid-execution",
-      "passes": false,
+      "passes": true,
       "priority": 8,
       "title": "Pause controller for pause/resume state"
     },
