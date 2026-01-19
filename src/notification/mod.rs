@@ -4,6 +4,10 @@
 //! actions and status changes to users. Each notification variant includes
 //! relevant context data for display purposes.
 
+mod renderer;
+
+pub use renderer::NotificationRenderer;
+
 use std::time::Duration;
 
 /// A notification about an error recovery action or status change.
@@ -205,7 +209,7 @@ mod tests {
         let notification = Notification::usage_limit_exceeded("API quota exhausted");
         assert!(matches!(
             notification,
-            Notification::UsageLimitExceeded { reason } if reason == "API quota exhausted"
+            Notification::UsageLimitExceeded { ref reason } if reason == "API quota exhausted"
         ));
         assert!(notification.is_error());
         assert!(!notification.is_recovery());
@@ -216,7 +220,7 @@ mod tests {
         let notification = Notification::timeout(Duration::from_secs(60), "API request");
         assert!(matches!(
             notification,
-            Notification::Timeout { duration, operation }
+            Notification::Timeout { duration, ref operation }
                 if duration == Duration::from_secs(60) && operation == "API request"
         ));
         assert!(notification.is_error());
@@ -229,7 +233,7 @@ mod tests {
             Notification::retrying(2, 5, Duration::from_secs(4), "Connection failed");
         assert!(matches!(
             notification,
-            Notification::Retrying { attempt, max_attempts, delay, reason }
+            Notification::Retrying { attempt, max_attempts, delay, ref reason }
                 if attempt == 2
                     && max_attempts == 5
                     && delay == Duration::from_secs(4)
@@ -244,7 +248,7 @@ mod tests {
         let notification = Notification::paused("User requested pause");
         assert!(matches!(
             notification,
-            Notification::Paused { reason } if reason == "User requested pause"
+            Notification::Paused { ref reason } if reason == "User requested pause"
         ));
         assert!(!notification.is_error());
         assert!(!notification.is_recovery());
@@ -256,7 +260,7 @@ mod tests {
         let notification = Notification::resuming("Continuing from checkpoint");
         assert!(matches!(
             notification,
-            Notification::Resuming { context } if context == "Continuing from checkpoint"
+            Notification::Resuming { ref context } if context == "Continuing from checkpoint"
         ));
         assert!(!notification.is_error());
         assert!(notification.is_recovery());

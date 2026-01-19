@@ -170,7 +170,7 @@
       "description": "As a user, I want clear notifications about errors and recovery actions.",
       "id": "US-009",
       "notes": "Notifications displayed via RalphDisplay",
-      "passes": false,
+      "passes": true,
       "priority": 9,
       "title": "Notification types and renderer"
     },
