@@ -5,6 +5,7 @@ use std::process::ExitCode;
 
 use ralphmacchio::audit;
 use ralphmacchio::checkpoint::{CheckpointManager, PauseReason};
+use ralphmacchio::logging::{init_logging, LoggingConfig};
 use ralphmacchio::mcp::RalphMcpServer;
 use ralphmacchio::runner::{Runner, RunnerConfig};
 use ralphmacchio::ui::{DisplayOptions, HelpRenderer, UiMode};
@@ -341,9 +342,9 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             return Ok(ExitCode::SUCCESS);
         }
         Some(Commands::Quality { help: false }) => {
-            // Initialize logging to stdout for quality checks (unless quiet)
+            // Initialize logging for quality checks (unless quiet)
             if !cli.quiet {
-                tracing_subscriber::fmt::init();
+                init_logging(LoggingConfig::from_verbosity(cli.verbose));
                 println!("Running quality checks...");
             }
         }
@@ -361,9 +362,7 @@ async fn main() -> Result<ExitCode, Box<dyn std::error::Error>> {
             // Configure logging to stderr only for MCP server mode
             // (stdout is reserved for MCP protocol communication)
             if !cli.quiet {
-                tracing_subscriber::fmt()
-                    .with_writer(std::io::stderr)
-                    .init();
+                init_logging(LoggingConfig::from_verbosity(cli.verbose));
             }
 
             // Create the server, optionally with a preloaded PRD
