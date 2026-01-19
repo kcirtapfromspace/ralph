@@ -18,6 +18,7 @@ mod kitty_graphics;
 mod mascot;
 pub mod parallel_display;
 pub mod parallel_events;
+pub mod parallel_status;
 mod quality_gates;
 mod spinner;
 mod story_view;
@@ -66,3 +67,4 @@ pub use tui_runner::TuiRunnerDisplay;
 // Parallel execution UI
 pub use parallel_display::ParallelRunnerDisplay;
 pub use parallel_events::{ParallelUIEvent, StoryDisplayInfo, StoryStatus};
+pub use parallel_status::{ParallelExecutionState, ParallelStatusRenderer, StoryExecutionState};
