@@ -196,7 +196,10 @@ impl Runner {
                     stories_passed: passing_count,
                     total_stories,
                     total_iterations: 0,
-                    error: Some("No agent found. Install Claude Code CLI or Amp CLI.".to_string()),
+                    error: Some(
+                        "No agent found. Install Claude Code CLI, Codex CLI, or Amp CLI."
+                            .to_string(),
+                    ),
                 };
             }
         };

@@ -329,7 +329,10 @@ impl ParallelRunner {
                     stories_passed: initially_passing.len(),
                     total_stories,
                     total_iterations: 0,
-                    error: Some("No agent found. Install Claude Code CLI or Amp CLI.".to_string()),
+                    error: Some(
+                        "No agent found. Install Claude Code CLI, Codex CLI, or Amp CLI."
+                            .to_string(),
+                    ),
                 };
             }
         };

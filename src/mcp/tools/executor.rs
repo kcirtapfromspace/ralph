@@ -712,28 +712,16 @@ impl StoryExecutor {
     /// The heartbeat is updated whenever the agent produces output, and stall
     /// detection triggers a graceful timeout.
     async fn run_agent(&self, prompt: &str, iteration: u32) -> Result<Vec<String>, ExecutorError> {
-        let agent_cmd = &self.config.agent_command;
-
-        // Detect which agent to use
-        let (program, args) = if agent_cmd == "claude" || agent_cmd.contains("claude") {
-            // Claude Code CLI - use --print for non-interactive mode
-            // and --dangerously-skip-permissions to allow file changes
-            (
-                "claude",
-                vec!["--print", "--dangerously-skip-permissions", prompt],
-            )
-        } else if agent_cmd == "amp" || agent_cmd.contains("amp") {
-            // Amp CLI
-            ("amp", vec!["--prompt", prompt])
-        } else {
-            // Custom agent command
-            (agent_cmd.as_str(), vec![prompt])
-        };
+        let (program, args) = build_agent_invocation(
+            &self.config.agent_command,
+            prompt,
+            self.config.project_root.as_path(),
+        );
 
         // Check if the agent is available (cross-platform)
-        if !is_program_in_path(program) {
+        if !is_program_in_path(&program) {
             return Err(ExecutorError::AgentError(format!(
-                "Agent '{}' not found in PATH. Install Claude Code CLI or Amp CLI.",
+                "Agent '{}' not found in PATH. Install Claude Code CLI, Codex CLI, or Amp CLI.",
                 program
             )));
         }
@@ -746,7 +734,7 @@ impl StoryExecutor {
         heartbeat_monitor.start_monitoring().await;
 
         // Spawn the agent process with piped stdout/stderr for streaming
-        let mut child = tokio::process::Command::new(program)
+        let mut child = tokio::process::Command::new(&program)
             .args(&args)
             .current_dir(&self.config.project_root)
             .stdout(Stdio::piped())
@@ -1255,13 +1243,71 @@ pub fn is_agent_available(agent: &str) -> bool {
 
 /// Detect the best available agent CLI
 pub fn detect_agent() -> Option<String> {
-    // Prefer Claude Code, fall back to Amp
+    // Prefer Claude Code, then Codex, then Amp
     if is_agent_available("claude") {
         Some("claude".to_string())
+    } else if is_agent_available("codex") {
+        Some("codex".to_string())
     } else if is_agent_available("amp") {
         Some("amp".to_string())
     } else {
         None
+    }
+}
+
+fn build_agent_invocation(
+    agent_command: &str,
+    prompt: &str,
+    project_root: &Path,
+) -> (String, Vec<String>) {
+    if agent_command == "claude" || agent_command.contains("claude") {
+        // Claude Code CLI - use --print for non-interactive mode
+        // and --dangerously-skip-permissions to allow file changes
+        (
+            "claude".to_string(),
+            vec![
+                "--print".to_string(),
+                "--dangerously-skip-permissions".to_string(),
+                prompt.to_string(),
+            ],
+        )
+    } else if agent_command == "codex" || agent_command.contains("codex") {
+        let mut args = vec![
+            "exec".to_string(),
+            "--full-auto".to_string(),
+            prompt.to_string(),
+        ];
+
+        if let Ok(model) = std::env::var("CODEX_MODEL") {
+            args.push("--model".to_string());
+            args.push(model);
+        }
+
+        let provider = std::env::var("CODEX_OSS_PROVIDER").unwrap_or_else(|_| "ollama".to_string());
+        if std::env::var("CODEX_OSS")
+            .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+            .unwrap_or(false)
+        {
+            args.push("--oss".to_string());
+            args.push("--local-provider".to_string());
+            args.push(provider);
+        }
+
+        if let Ok(model) = std::env::var("CODEX_OSS_MODEL") {
+            args.push("--model".to_string());
+            args.push(model);
+        }
+
+        let mut args_with_dir = vec!["-C".to_string(), project_root.display().to_string()];
+        args_with_dir.extend(args);
+        ("codex".to_string(), args_with_dir)
+    } else if agent_command == "amp" || agent_command.contains("amp") {
+        (
+            "amp".to_string(),
+            vec!["--prompt".to_string(), prompt.to_string()],
+        )
+    } else {
+        (agent_command.to_string(), vec![prompt.to_string()])
     }
 }
 
@@ -1420,7 +1466,20 @@ mod tests {
         let agent = detect_agent();
         // Just verify it returns a valid option or None
         if let Some(a) = agent {
-            assert!(a == "claude" || a == "amp");
+            assert!(a == "claude" || a == "codex" || a == "amp");
         }
+    }
+
+    #[test]
+    fn test_build_agent_invocation_codex_default() {
+        let (program, args) =
+            build_agent_invocation("codex", "test prompt", Path::new("/tmp/project"));
+
+        assert_eq!(program, "codex");
+        assert_eq!(args[0], "-C");
+        assert_eq!(args[1], "/tmp/project");
+        assert_eq!(args[2], "exec");
+        assert!(args.contains(&"--full-auto".to_string()));
+        assert!(args.contains(&"test prompt".to_string()));
     }
 }
