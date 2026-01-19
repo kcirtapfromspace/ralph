@@ -1,10 +1,14 @@
 // Terminal runner for Ralph
 // This module implements the default "run all stories until complete" behavior
 
+use std::io::{self, Write};
 use std::path::PathBuf;
 use tokio::sync::watch;
 
-use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, StoryExecutor};
+use chrono::Utc;
+
+use crate::checkpoint::{Checkpoint, CheckpointManager, PauseReason, StoryCheckpoint};
+use crate::mcp::tools::executor::{detect_agent, ExecutorConfig, ExecutorError, StoryExecutor};
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
 use crate::parallel::scheduler::ParallelRunnerConfig;
 use crate::ui::{DisplayOptions, TuiRunnerDisplay};
@@ -77,12 +81,31 @@ pub struct RunResult {
 /// The main runner that iterates through stories
 pub struct Runner {
     config: RunnerConfig,
+    /// Optional checkpoint manager (None if checkpointing is disabled)
+    checkpoint_manager: Option<CheckpointManager>,
 }
 
 impl Runner {
     /// Create a new runner with the given configuration
     pub fn new(config: RunnerConfig) -> Self {
-        Self { config }
+        // Initialize checkpoint manager if checkpointing is enabled
+        let checkpoint_manager = if config.no_checkpoint {
+            None
+        } else {
+            match CheckpointManager::new(&config.working_dir) {
+                Ok(manager) => Some(manager),
+                Err(e) => {
+                    // Log warning but continue without checkpointing
+                    eprintln!("Warning: Failed to initialize checkpoint manager: {}", e);
+                    None
+                }
+            }
+        };
+
+        Self {
+            config,
+            checkpoint_manager,
+        }
     }
 
     /// Run all stories until all pass or an error occurs.
@@ -199,7 +222,8 @@ impl Runner {
 
             match next_story {
                 None => {
-                    // All stories pass!
+                    // All stories pass! Clear checkpoint on full completion.
+                    self.clear_checkpoint();
                     display.display_all_complete(total_stories);
                     return RunResult {
                         all_passed: true,
@@ -214,6 +238,16 @@ impl Runner {
                     if self.config.max_total_iterations > 0
                         && total_iterations >= self.config.max_total_iterations
                     {
+                        // Save checkpoint on reaching iteration limit
+                        self.save_checkpoint(
+                            &story.id,
+                            1,
+                            self.config.max_iterations_per_story,
+                            PauseReason::Error(format!(
+                                "Max total iterations ({}) reached",
+                                self.config.max_total_iterations
+                            )),
+                        );
                         return RunResult {
                             all_passed: false,
                             stories_passed: self.count_passing_stories().unwrap_or(0),
@@ -245,6 +279,10 @@ impl Runner {
                     let (_cancel_tx, cancel_rx) = watch::channel(false);
 
                     let story_id = story.id.clone();
+                    let max_iterations = self.config.max_iterations_per_story;
+
+                    // Save checkpoint before starting story execution
+                    self.save_checkpoint(&story_id, 1, max_iterations, PauseReason::UserRequested);
 
                     let result = executor
                         .execute_story(&story_id, cancel_rx, |iter, max| {
@@ -257,9 +295,23 @@ impl Runner {
                     match result {
                         Ok(exec_result) => {
                             if exec_result.success {
+                                // Clear checkpoint on successful story completion
+                                self.clear_checkpoint();
                                 display
                                     .complete_story(&story_id, exec_result.commit_hash.as_deref());
                             } else {
+                                // Save checkpoint on story failure (quality gates didn't pass)
+                                self.save_checkpoint(
+                                    &story_id,
+                                    exec_result.iterations_used,
+                                    max_iterations,
+                                    PauseReason::Error(
+                                        exec_result
+                                            .error
+                                            .clone()
+                                            .unwrap_or_else(|| "Quality gates failed".to_string()),
+                                    ),
+                                );
                                 display.fail_story(
                                     &story_id,
                                     exec_result.error.as_deref().unwrap_or("unknown"),
@@ -267,6 +319,13 @@ impl Runner {
                             }
                         }
                         Err(e) => {
+                            // Save checkpoint on executor error
+                            self.save_checkpoint(
+                                &story_id,
+                                1,
+                                max_iterations,
+                                Self::error_to_pause_reason(&e),
+                            );
                             display.fail_story(&story_id, &e.to_string());
                             // Don't fail the whole run, just continue
                         }
@@ -296,5 +355,79 @@ impl Runner {
     fn count_passing_stories(&self) -> Result<usize, String> {
         let prd = self.load_prd()?;
         Ok(prd.user_stories.iter().filter(|s| s.passes).count())
+    }
+
+    /// Save a checkpoint with the current execution state.
+    ///
+    /// Does nothing if checkpointing is disabled.
+    fn save_checkpoint(
+        &self,
+        story_id: &str,
+        iteration: u32,
+        max_iterations: u32,
+        pause_reason: PauseReason,
+    ) {
+        if let Some(ref manager) = self.checkpoint_manager {
+            let uncommitted_files = self.get_uncommitted_files().unwrap_or_default();
+            let checkpoint = Checkpoint::new(
+                Some(StoryCheckpoint::new(story_id, iteration, max_iterations)),
+                pause_reason,
+                uncommitted_files,
+            );
+
+            if let Err(e) = manager.save(&checkpoint) {
+                eprintln!("Warning: Failed to save checkpoint: {}", e);
+            }
+        }
+    }
+
+    /// Clear the checkpoint (called on successful completion).
+    ///
+    /// Does nothing if checkpointing is disabled.
+    fn clear_checkpoint(&self) {
+        if let Some(ref manager) = self.checkpoint_manager {
+            if let Err(e) = manager.clear() {
+                eprintln!("Warning: Failed to clear checkpoint: {}", e);
+            }
+        }
+    }
+
+    /// Get list of uncommitted files from git.
+    fn get_uncommitted_files(&self) -> Result<Vec<String>, String> {
+        use std::process::Command;
+
+        let output = Command::new("git")
+            .args(["status", "--porcelain"])
+            .current_dir(&self.config.working_dir)
+            .output()
+            .map_err(|e| format!("Failed to run git status: {}", e))?;
+
+        if !output.status.success() {
+            return Ok(vec![]);
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let files: Vec<String> = stdout
+            .lines()
+            .filter_map(|line| {
+                let line = line.trim();
+                if line.len() > 3 {
+                    Some(line[3..].to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        Ok(files)
+    }
+
+    /// Convert an ExecutorError to a PauseReason for checkpointing.
+    fn error_to_pause_reason(error: &ExecutorError) -> PauseReason {
+        match error {
+            ExecutorError::Timeout(_) => PauseReason::Timeout,
+            ExecutorError::Cancelled => PauseReason::UserRequested,
+            _ => PauseReason::Error(error.to_string()),
+        }
     }
 }

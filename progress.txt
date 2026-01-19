@@ -161,3 +161,13 @@ Feature: Error Recovery System
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 21:05 - US-012
+- **What was implemented**: Add --resume and --timeout CLI flags
+- **Files changed**:
+  - rd.json
+  - rogress.txt
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---

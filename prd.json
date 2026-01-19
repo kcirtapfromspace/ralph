@@ -224,7 +224,7 @@
       "description": "As a user, I want CLI flags to control resume and timeout behavior.",
       "id": "US-012",
       "notes": "Follow existing CLI patterns in main.rs",
-      "passes": false,
+      "passes": true,
       "priority": 12,
       "title": "Add --resume and --timeout CLI flags"
     },

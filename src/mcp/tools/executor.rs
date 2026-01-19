@@ -15,6 +15,8 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::{watch, Mutex};
 
+use crate::checkpoint::{Checkpoint, CheckpointManager, PauseReason, StoryCheckpoint};
+use crate::error::classification::{ErrorCategory, TimeoutReason};
 use crate::timeout::TimeoutConfig;
 
 use crate::mcp::tools::load_prd::{PrdFile, PrdUserStory};
@@ -75,6 +77,24 @@ impl std::fmt::Display for ExecutorError {
 
 impl std::error::Error for ExecutorError {}
 
+impl ExecutorError {
+    /// Classify this error into an ErrorCategory for recovery decisions.
+    pub fn classify(&self) -> ErrorCategory {
+        use crate::error::classification::{FatalReason, TransientReason};
+
+        match self {
+            ExecutorError::Timeout(_) => ErrorCategory::Timeout(TimeoutReason::ProcessTimeout),
+            ExecutorError::Cancelled => ErrorCategory::Fatal(FatalReason::InternalError),
+            ExecutorError::StoryNotFound(_) => ErrorCategory::Fatal(FatalReason::ResourceNotFound),
+            ExecutorError::PrdError(_) => ErrorCategory::Fatal(FatalReason::ConfigurationError),
+            ExecutorError::GitError(_) => ErrorCategory::Transient(TransientReason::ResourceLocked),
+            ExecutorError::QualityGateFailed(_) => ErrorCategory::Fatal(FatalReason::InternalError),
+            ExecutorError::AgentError(_) => ErrorCategory::Transient(TransientReason::ServerError),
+            ExecutorError::IoError(_) => ErrorCategory::Transient(TransientReason::NetworkError),
+        }
+    }
+}
+
 /// Configuration for the story executor
 #[derive(Debug, Clone)]
 pub struct ExecutorConfig {
@@ -114,12 +134,29 @@ impl Default for ExecutorConfig {
 /// Story executor that handles the end-to-end execution of user stories
 pub struct StoryExecutor {
     config: ExecutorConfig,
+    checkpoint_manager: Option<CheckpointManager>,
 }
 
 impl StoryExecutor {
     /// Create a new story executor with the given configuration
     pub fn new(config: ExecutorConfig) -> Self {
-        Self { config }
+        // Attempt to create a checkpoint manager for the project root
+        let checkpoint_manager = CheckpointManager::new(&config.project_root).ok();
+        Self {
+            config,
+            checkpoint_manager,
+        }
+    }
+
+    /// Create a new story executor with an explicit checkpoint manager
+    pub fn with_checkpoint_manager(
+        config: ExecutorConfig,
+        checkpoint_manager: Option<CheckpointManager>,
+    ) -> Self {
+        Self {
+            config,
+            checkpoint_manager,
+        }
     }
 
     /// Execute a single story by ID
@@ -175,6 +212,11 @@ impl StoryExecutor {
             match self.run_agent(&prompt, iteration).await {
                 Ok(changed) => {
                     files_changed = changed;
+                }
+                Err(ExecutorError::Timeout(msg)) => {
+                    // On timeout, save checkpoint before returning error
+                    self.save_timeout_checkpoint(story_id, iteration);
+                    return Err(ExecutorError::Timeout(msg));
                 }
                 Err(e) => {
                     last_error = Some(e.to_string());
@@ -367,6 +409,30 @@ impl StoryExecutor {
             .collect();
 
         Ok(files)
+    }
+
+    /// Save a checkpoint when execution times out.
+    ///
+    /// This captures the current execution state so the story can be resumed later.
+    /// Errors during checkpoint saving are logged but not propagated.
+    fn save_timeout_checkpoint(&self, story_id: &str, iteration: u32) {
+        if let Some(ref manager) = self.checkpoint_manager {
+            // Get uncommitted files for checkpoint
+            let uncommitted_files = self.get_changed_files().unwrap_or_default();
+
+            let checkpoint = Checkpoint::new(
+                Some(StoryCheckpoint::new(
+                    story_id,
+                    iteration,
+                    self.config.max_iterations,
+                )),
+                PauseReason::Timeout,
+                uncommitted_files,
+            );
+
+            // Save checkpoint, ignoring errors (best effort)
+            let _ = manager.save(&checkpoint);
+        }
     }
 
     /// Run quality gates and return results
