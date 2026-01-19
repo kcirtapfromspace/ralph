@@ -24,6 +24,8 @@ pub enum PauseReason {
     Timeout,
     /// An error occurred during execution
     Error(String),
+    /// Checkpoint saved at iteration boundary (for recovery if interrupted)
+    IterationBoundary,
 }
 
 /// Checkpoint data for a single story's execution state.

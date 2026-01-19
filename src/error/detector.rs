@@ -133,7 +133,7 @@ impl ErrorDetector {
                 "HTTP 429 status code",
             ),
             ErrorPattern::new(
-                r"(?i)rate[\s\-]*limit",
+                r"(?i)\brate[\s\-]?limit",
                 ErrorCategory::UsageLimit(UsageLimitReason::RateLimited),
                 RecoveryHint::RetryAfter(Duration::from_secs(60)),
                 "Rate limit error message",
@@ -330,7 +330,8 @@ impl ErrorDetector {
     pub fn classify_error(&self, text: &str) -> Option<ClassifiedError> {
         for pattern in &self.patterns {
             if pattern.matches(text) {
-                let matched = pattern.find(text).unwrap_or("");
+                // Safe to unwrap since matches() returned true
+                let matched = pattern.find(text).expect("pattern should match after matches() returned true");
                 return Some(
                     ClassifiedError::new(
                         pattern.category.clone(),

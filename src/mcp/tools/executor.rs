@@ -611,8 +611,13 @@ impl StoryExecutor {
                 uncommitted_files,
             );
 
-            // Save checkpoint, ignoring errors (best effort)
-            let _ = manager.save(&checkpoint);
+            // Save checkpoint with error logging (best effort, but warn on failure)
+            if let Err(e) = manager.save(&checkpoint) {
+                eprintln!(
+                    "Warning: Failed to save timeout checkpoint for story '{}': {}",
+                    story_id, e
+                );
+            }
         }
     }
 

@@ -798,6 +798,7 @@ fn run_status(dir: Option<PathBuf>, quiet: bool) -> Result<ExitCode, Box<dyn std
                     PauseReason::RateLimited => "Rate limited".to_string(),
                     PauseReason::UserRequested => "User requested".to_string(),
                     PauseReason::Timeout => "Timeout".to_string(),
+                    PauseReason::IterationBoundary => "Iteration boundary".to_string(),
                     PauseReason::Error(msg) => format!("Error: {}", msg),
                 };
                 println!("Pause Reason: {}", reason_str);
@@ -836,6 +837,9 @@ fn run_status(dir: Option<PathBuf>, quiet: bool) -> Result<ExitCode, Box<dyn std
                     }
                     PauseReason::Timeout => {
                         println!("  Check for stuck processes, then run 'ralph run' to resume.");
+                    }
+                    PauseReason::IterationBoundary => {
+                        println!("  Run 'ralph run' to resume execution.");
                     }
                     PauseReason::Error(_) => {
                         println!(

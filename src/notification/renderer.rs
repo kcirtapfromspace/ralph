@@ -42,6 +42,17 @@ impl<'a> NotificationRenderer<'a> {
         "─".repeat(width)
     }
 
+    /// Safely truncates a string to the given maximum character count.
+    /// This handles multi-byte UTF-8 characters correctly.
+    fn safe_truncate(s: &str, max_chars: usize) -> String {
+        if s.chars().count() <= max_chars {
+            s.to_string()
+        } else {
+            let truncated: String = s.chars().take(max_chars.saturating_sub(3)).collect();
+            format!("{}...", truncated)
+        }
+    }
+
     /// Renders a rate limit notification with countdown timer display.
     ///
     /// # Arguments
@@ -228,12 +239,13 @@ impl<'a> NotificationRenderer<'a> {
         // Checkpoint path if available
         if let Some(path) = checkpoint_path {
             let path_msg = format!("Path: {}", path);
-            // Truncate path if too long
-            let truncated_path = if path_msg.len() > inner_width - 2 {
-                format!(
-                    "Path: ...{}",
-                    &path[path.len().saturating_sub(inner_width - 12)..]
-                )
+            // Truncate path if too long (UTF-8 safe)
+            let truncated_path = if path_msg.chars().count() > inner_width - 2 {
+                let path_chars: Vec<char> = path.chars().collect();
+                let max_path_chars = inner_width.saturating_sub(12);
+                let start_idx = path_chars.len().saturating_sub(max_path_chars);
+                let truncated_path_part: String = path_chars[start_idx..].iter().collect();
+                format!("Path: ...{}", truncated_path_part)
             } else {
                 path_msg
             };
@@ -310,13 +322,9 @@ impl<'a> NotificationRenderer<'a> {
             " ".repeat(error_padding)
         ));
 
-        // Truncate error summary if too long
-        let truncated_error = if error_summary.len() > inner_width - 2 {
-            format!("{}...", &error_summary[..inner_width - 5])
-        } else {
-            error_summary.to_string()
-        };
-        let err_padding = inner_width.saturating_sub(truncated_error.len() + 1);
+        // Truncate error summary if too long (UTF-8 safe)
+        let truncated_error = Self::safe_truncate(error_summary, inner_width.saturating_sub(2));
+        let err_padding = inner_width.saturating_sub(truncated_error.chars().count() + 1);
         output.push_str(&format!(
             " {}{}\n",
             truncated_error,
@@ -405,13 +413,9 @@ impl<'a> NotificationRenderer<'a> {
             " ".repeat(reason_padding)
         ));
 
-        // Reason text (may need truncation)
-        let truncated_reason = if reason.len() > inner_width - 2 {
-            format!("{}...", &reason[..inner_width - 5])
-        } else {
-            reason.to_string()
-        };
-        let reason_text_padding = inner_width.saturating_sub(truncated_reason.len() + 1);
+        // Reason text (may need truncation, UTF-8 safe)
+        let truncated_reason = Self::safe_truncate(reason, inner_width.saturating_sub(2));
+        let reason_text_padding = inner_width.saturating_sub(truncated_reason.chars().count() + 1);
         output.push_str(&format!(
             " {}{}\n",
             truncated_reason,

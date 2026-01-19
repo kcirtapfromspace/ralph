@@ -330,12 +330,12 @@ impl Runner {
 
                     let story_id = story.id.clone();
 
-                    // Save checkpoint before starting story execution
+                    // Save checkpoint before starting story execution (for recovery if interrupted)
                     self.save_checkpoint(
                         &story_id,
                         start_iteration,
                         max_iterations,
-                        PauseReason::UserRequested,
+                        PauseReason::IterationBoundary,
                     );
 
                     let result = executor
@@ -386,14 +386,12 @@ impl Runner {
                             // Handle based on error category
                             match &category {
                                 ErrorCategory::Transient(_) => {
-                                    // For transient errors, display retry notification and continue
-                                    // The next iteration will retry automatically
-                                    let notification = Notification::retrying(
-                                        start_iteration,
-                                        max_iterations,
-                                        std::time::Duration::from_secs(0),
-                                        e.to_string(),
-                                    );
+                                    // For transient errors, save checkpoint and pause
+                                    // Will retry on next run
+                                    let notification = Notification::paused(format!(
+                                        "Transient error (will retry on next run): {}",
+                                        e
+                                    ));
                                     println!("{}", notification);
                                     self.save_checkpoint(
                                         &story_id,
@@ -599,6 +597,7 @@ impl Runner {
             PauseReason::RateLimited => "Rate limited".to_string(),
             PauseReason::UserRequested => "User requested".to_string(),
             PauseReason::Timeout => "Timeout".to_string(),
+            PauseReason::IterationBoundary => "Iteration boundary".to_string(),
             PauseReason::Error(msg) => {
                 let truncated = if msg.len() > 40 {
                     format!("{}...", &msg[..37])
@@ -674,6 +673,10 @@ impl Runner {
             PauseReason::Timeout => {
                 println!("  Type:        Timeout");
                 println!("  Details:     Operation exceeded configured timeout");
+            }
+            PauseReason::IterationBoundary => {
+                println!("  Type:        Iteration Boundary");
+                println!("  Details:     Checkpoint saved at iteration start for recovery");
             }
             PauseReason::Error(msg) => {
                 println!("  Type:        Error");

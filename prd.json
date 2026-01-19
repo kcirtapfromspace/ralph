@@ -355,7 +355,7 @@
       "description": "As a developer, I need integration tests to verify the recovery system works end-to-end.",
       "id": "US-020",
       "notes": "Uses tests/ directory for integration tests",
-      "passes": false,
+      "passes": true,
       "priority": 20,
       "title": "Integration tests for error recovery system"
     }
