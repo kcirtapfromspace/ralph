@@ -32,21 +32,20 @@ pub fn display_guidance_prompt(result: &ExecutionResult) {
     }
 
     // Display suggestions from futility verdict
-    if let Some(ref verdict) = result.futility_verdict {
-        match verdict {
-            FutilityVerdict::PauseForGuidance { reason, suggestions } => {
-                println!("Analysis:");
-                println!("  {}\n", reason);
+    if let Some(FutilityVerdict::PauseForGuidance {
+        reason,
+        suggestions,
+    }) = &result.futility_verdict
+    {
+        println!("Analysis:");
+        println!("  {}\n", reason);
 
-                if !suggestions.is_empty() {
-                    println!("Suggestions:");
-                    for suggestion in suggestions {
-                        println!("  • {}", suggestion);
-                    }
-                    println!();
-                }
+        if !suggestions.is_empty() {
+            println!("Suggestions:");
+            for suggestion in suggestions {
+                println!("  • {}", suggestion);
             }
-            _ => {}
+            println!();
         }
     }
 
@@ -91,7 +90,10 @@ pub fn prompt_guidance_choice() -> io::Result<GuidanceChoice> {
 }
 
 /// Prompt the user to provide guidance text.
-pub fn prompt_guidance_text(story_id: &str, current_iteration: u32) -> io::Result<SteeringGuidance> {
+pub fn prompt_guidance_text(
+    story_id: &str,
+    current_iteration: u32,
+) -> io::Result<SteeringGuidance> {
     println!("\n{}", "=".repeat(80));
     println!("Provide guidance for story {}", story_id);
     println!("{}", "=".repeat(80));

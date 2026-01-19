@@ -356,10 +356,8 @@ impl StoryExecutor {
                         let verdict = detector.analyze(&iter_context);
                         if !verdict.should_continue() {
                             // Check if this is a pause for guidance scenario
-                            let needs_guidance = matches!(
-                                verdict,
-                                FutilityVerdict::PauseForGuidance { .. }
-                            );
+                            let needs_guidance =
+                                matches!(verdict, FutilityVerdict::PauseForGuidance { .. });
 
                             // Record metrics completion (only if not pausing for guidance)
                             if !needs_guidance {
@@ -470,10 +468,8 @@ impl StoryExecutor {
                 let verdict = detector.analyze(&iter_context);
                 if !verdict.should_continue() {
                     // Check if this is a pause for guidance scenario
-                    let needs_guidance = matches!(
-                        verdict,
-                        FutilityVerdict::PauseForGuidance { .. }
-                    );
+                    let needs_guidance =
+                        matches!(verdict, FutilityVerdict::PauseForGuidance { .. });
 
                     // Record metrics completion (only if not pausing for guidance)
                     if !needs_guidance {
@@ -547,9 +543,7 @@ impl StoryExecutor {
         // Last error (if available)
         if let Some(ref err) = last_error {
             // Strip "Agent execution error:" prefix if present to avoid nesting
-            let clean_error = err
-                .strip_prefix("Agent execution error: ")
-                .unwrap_or(err);
+            let clean_error = err.strip_prefix("Agent execution error: ").unwrap_or(err);
             summary.push_str(&format!("Last Error:\n{}\n\n", clean_error));
         }
 
@@ -577,7 +571,11 @@ impl StoryExecutor {
             summary.push_str("Error History:\n");
             let error_counts = context.error_count_by_category();
             for (category, count) in error_counts.iter() {
-                summary.push_str(&format!("  - {}: {} occurrence(s)\n", category.as_str(), count));
+                summary.push_str(&format!(
+                    "  - {}: {} occurrence(s)\n",
+                    category.as_str(),
+                    count
+                ));
             }
             summary.push('\n');
 
@@ -610,10 +608,7 @@ impl StoryExecutor {
         ));
 
         if let Some((sig, count)) = pattern_summary.most_frequent_error {
-            summary.push_str(&format!(
-                "  - Most frequent: '{}' ({} times)\n",
-                sig, count
-            ));
+            summary.push_str(&format!("  - Most frequent: '{}' ({} times)\n", sig, count));
         }
 
         if pattern_summary.has_oscillation {
@@ -632,7 +627,8 @@ impl StoryExecutor {
             summary.push_str("  1. Review conflicting requirements that cause oscillation\n");
             summary.push_str("  2. Address both issues simultaneously rather than sequentially\n");
         } else if pattern_summary.has_stagnation {
-            summary.push_str("  1. Review the recurring error and provide more specific guidance\n");
+            summary
+                .push_str("  1. Review the recurring error and provide more specific guidance\n");
             summary.push_str("  2. Consider breaking down the story into smaller subtasks\n");
             summary.push_str("  3. Check for missing dependencies or prerequisites\n");
         } else {
@@ -922,7 +918,7 @@ impl StoryExecutor {
                             let error_details = self.build_agent_error_message(
                                 &stdout_output,
                                 &stderr_output,
-                                exit_status.code()
+                                exit_status.code(),
                             );
                             return Err(ExecutorError::AgentError(error_details));
                         }
@@ -995,7 +991,9 @@ impl StoryExecutor {
         // If stderr is empty, check stdout for error indicators
         if stderr.trim().is_empty() {
             let stdout_lines: Vec<&str> = stdout.lines().collect();
-            let error_indicators = ["error:", "Error:", "ERROR", "failed", "Failed", "FAILED", "panic"];
+            let error_indicators = [
+                "error:", "Error:", "ERROR", "failed", "Failed", "FAILED", "panic",
+            ];
 
             let relevant_stdout: Vec<&str> = stdout_lines
                 .iter()
@@ -1003,7 +1001,9 @@ impl StoryExecutor {
                 .take(20)
                 .rev()
                 .filter(|line| {
-                    error_indicators.iter().any(|indicator| line.contains(indicator))
+                    error_indicators
+                        .iter()
+                        .any(|indicator| line.contains(indicator))
                 })
                 .copied()
                 .collect();
