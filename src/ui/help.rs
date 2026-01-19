@@ -188,6 +188,11 @@ pub const GLOBAL_OPTIONS: &[CommandInfo] = &[
         "Increase verbosity (expand details, debug info)",
         None,
     ),
+    CommandInfo::new(
+        "--agent <CMD>",
+        "Agent command (claude, codex, amp, or custom)",
+        None,
+    ),
     CommandInfo::new("--help, -h", "Print help information", None),
     CommandInfo::new(
         "--version, -V",
