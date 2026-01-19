@@ -16,6 +16,7 @@ mod iteration_view;
 mod keyboard;
 mod kitty_graphics;
 mod mascot;
+mod parallel_events;
 mod quality_gates;
 mod spinner;
 mod story_view;
@@ -60,3 +61,6 @@ pub use spinner::{
 pub use story_view::{StoryInfo, StoryView, StoryViewState};
 pub use summary::{ExecutionSummary, GateStatistics, StoryResult, SummaryRenderer};
 pub use tui_runner::TuiRunnerDisplay;
+
+// Parallel execution UI events
+pub use parallel_events::{ParallelUIEvent, StoryDisplayInfo, StoryStatus};
