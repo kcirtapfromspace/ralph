@@ -319,10 +319,19 @@ impl ParallelRunner {
 
         let mut total_iterations: u32 = 0;
 
+        // Check if UI should be enabled based on display options
+        // Skip UI rendering when quiet mode is set or UI mode is disabled
+        let should_enable_ui = !self.base_config.display_options.quiet
+            && self.base_config.display_options.should_enable_rich_ui();
+
         // Create UI channel and spawn event handler if UI is enabled
         let (ui_tx, ui_rx) = mpsc::channel::<ParallelUIEvent>(100);
-        let _ui_handle = if self.ui_tx.is_some() {
-            let mut display = ParallelRunnerDisplay::new();
+        let _ui_handle = if should_enable_ui {
+            let mut display = ParallelRunnerDisplay::with_display_options(
+                self.base_config.display_options.clone(),
+            );
+            // Set the max workers for display
+            display.set_max_workers(self.config.max_concurrency);
 
             // Initialize display with story information
             let story_infos: Vec<_> = prd
@@ -408,7 +417,7 @@ impl ParallelRunner {
         };
 
         // Store sender for use in spawned tasks (only if UI enabled)
-        let ui_sender: Option<mpsc::Sender<ParallelUIEvent>> = if self.ui_tx.is_some() {
+        let ui_sender: Option<mpsc::Sender<ParallelUIEvent>> = if should_enable_ui {
             Some(ui_tx)
         } else {
             drop(ui_tx);

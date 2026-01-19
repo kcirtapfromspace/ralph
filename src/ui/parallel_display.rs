@@ -50,6 +50,8 @@ pub struct ParallelRunnerDisplay {
     display_options: DisplayOptions,
     /// Whether colors are enabled
     colors_enabled: bool,
+    /// Maximum concurrent workers (for display purposes)
+    max_workers: u32,
 }
 
 impl Default for ParallelRunnerDisplay {
@@ -71,6 +73,7 @@ impl ParallelRunnerDisplay {
             theme,
             display_options,
             colors_enabled,
+            max_workers: 3, // Default concurrency
         }
     }
 
@@ -85,6 +88,7 @@ impl ParallelRunnerDisplay {
             theme,
             display_options,
             colors_enabled,
+            max_workers: 3,
         }
     }
 
@@ -99,6 +103,7 @@ impl ParallelRunnerDisplay {
             theme,
             display_options: options,
             colors_enabled,
+            max_workers: 3,
         }
     }
 
@@ -112,7 +117,24 @@ impl ParallelRunnerDisplay {
             theme,
             display_options: options,
             colors_enabled,
+            max_workers: 3,
         }
+    }
+
+    /// Set the maximum number of concurrent workers.
+    pub fn with_max_workers(mut self, max_workers: u32) -> Self {
+        self.max_workers = max_workers;
+        self
+    }
+
+    /// Set the maximum number of concurrent workers (mutable).
+    pub fn set_max_workers(&mut self, max_workers: u32) {
+        self.max_workers = max_workers;
+    }
+
+    /// Get the maximum number of concurrent workers.
+    pub fn max_workers(&self) -> u32 {
+        self.max_workers
     }
 
     /// Get the current theme.
@@ -140,6 +162,49 @@ impl ParallelRunnerDisplay {
         Arc::clone(&self.multi_progress)
     }
 
+    /// Display the parallel execution header with worker count.
+    ///
+    /// Shows a banner indicating parallel mode is active and the number of workers.
+    pub fn display_header(&self, story_count: usize) {
+        if self.display_options.quiet {
+            return;
+        }
+
+        // Format worker count display (handle "unlimited" case)
+        let workers_display = if self.max_workers == u32::MAX {
+            "unlimited".to_string()
+        } else {
+            self.max_workers.to_string()
+        };
+
+        println!();
+        if self.colors_enabled {
+            let header_rgb = self.theme.active;
+            println!(
+                "\x1b[38;2;{};{};{}m╔════════════════════════════════════════════════════════════╗\x1b[0m",
+                header_rgb.0, header_rgb.1, header_rgb.2
+            );
+            println!(
+                "\x1b[38;2;{};{};{}m║               🥋 RALPH PARALLEL MODE                        ║\x1b[0m",
+                header_rgb.0, header_rgb.1, header_rgb.2
+            );
+            println!(
+                "\x1b[38;2;{};{};{}m╚════════════════════════════════════════════════════════════╝\x1b[0m",
+                header_rgb.0, header_rgb.1, header_rgb.2
+            );
+        } else {
+            println!("╔════════════════════════════════════════════════════════════╗");
+            println!("║               RALPH PARALLEL MODE                          ║");
+            println!("╚════════════════════════════════════════════════════════════╝");
+        }
+        println!();
+        println!(
+            "  Workers: {}  |  Stories: {}",
+            workers_display, story_count
+        );
+        println!();
+    }
+
     /// Initialize progress bars for all stories that will be executed.
     ///
     /// This sets up a progress bar for each story in the execution queue,
@@ -148,6 +213,9 @@ impl ParallelRunnerDisplay {
     /// # Arguments
     /// * `stories` - List of story display information for all stories to track
     pub fn init_stories(&mut self, stories: &[StoryDisplayInfo]) {
+        // Display header with worker count
+        self.display_header(stories.len());
+
         // Clear any existing progress bars
         self.clear();
 
@@ -176,28 +244,42 @@ impl ParallelRunnerDisplay {
 
     /// Create a progress style for pending stories.
     fn create_pending_style(&self) -> ProgressStyle {
-        let muted_rgb = self.theme.muted;
         let spinner_chars = spinner_chars::BRAILLE.join("");
 
-        ProgressStyle::with_template(&format!(
-            "{{spinner:.color({},{},{})}} {{msg}}",
-            muted_rgb.0, muted_rgb.1, muted_rgb.2
-        ))
-        .unwrap_or_else(|_| ProgressStyle::default_spinner())
-        .tick_strings(&[&spinner_chars, StoryStatus::Pending.icon()])
+        // Fall back to simple output when colors are not enabled
+        let template = if self.colors_enabled {
+            let muted_rgb = self.theme.muted;
+            format!(
+                "{{spinner:.color({},{},{})}} {{msg}}",
+                muted_rgb.0, muted_rgb.1, muted_rgb.2
+            )
+        } else {
+            "{spinner} {msg}".to_string()
+        };
+
+        ProgressStyle::with_template(&template)
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&[&spinner_chars, StoryStatus::Pending.icon()])
     }
 
     /// Create a progress style for in-progress stories.
     fn create_in_progress_style(&self) -> ProgressStyle {
-        let in_progress_rgb = self.theme.in_progress;
         let spinner_chars = spinner_chars::BRAILLE.join("");
 
-        ProgressStyle::with_template(&format!(
-            "{{spinner:.color({},{},{})}} [{{elapsed_precise}}] {{msg}}",
-            in_progress_rgb.0, in_progress_rgb.1, in_progress_rgb.2
-        ))
-        .unwrap_or_else(|_| ProgressStyle::default_spinner())
-        .tick_strings(&[&spinner_chars, StoryStatus::InProgress.icon()])
+        // Fall back to simple output when colors are not enabled
+        let template = if self.colors_enabled {
+            let in_progress_rgb = self.theme.in_progress;
+            format!(
+                "{{spinner:.color({},{},{})}} [{{elapsed_precise}}] {{msg}}",
+                in_progress_rgb.0, in_progress_rgb.1, in_progress_rgb.2
+            )
+        } else {
+            "{spinner} [{elapsed_precise}] {msg}".to_string()
+        };
+
+        ProgressStyle::with_template(&template)
+            .unwrap_or_else(|_| ProgressStyle::default_spinner())
+            .tick_strings(&[&spinner_chars, StoryStatus::InProgress.icon()])
     }
 
     /// Format the message for a story progress bar.

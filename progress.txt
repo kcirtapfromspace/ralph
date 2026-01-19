@@ -422,3 +422,16 @@ Feature: Codebase Audit
 - **Learnings for future iterations:**
 - Story completed successfully via automated execution
 ---
+
+## 2026-01-18 18:45 - US-008
+- **What was implemented**: Integrate keyboard listener
+- **Files changed**:
+  - rogress.txt
+  - rc/parallel/scheduler.rs
+  - rc/ui/keyboard.rs
+  - rc/ui/parallel_events.rs
+  - rc/ui/parallel_status.rs
+- **Iterations used**: 1
+- **Learnings for future iterations:**
+- Story completed successfully via automated execution
+---
