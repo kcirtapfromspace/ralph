@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/kcirtapfromspace/ralph/compare/v0.2.0...v0.3.0) (2026-01-19)
+
+
+### Features
+
+* Add interactive steering corrections for stuck user stories ([#31](https://github.com/kcirtapfromspace/ralph/issues/31)) ([3aa31f1](https://github.com/kcirtapfromspace/ralph/commit/3aa31f195988b057faeb053e520aa016ff4f3a6b))
+
 ## [0.2.0](https://github.com/kcirtapfromspace/ralph/compare/v0.1.1...v0.2.0) (2026-01-19)
 
 
